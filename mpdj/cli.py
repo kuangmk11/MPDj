@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import os
 import random
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -150,8 +152,14 @@ def cmd_play(ctx: Ctx, a) -> None:
     p = ctx.p
     songs = p.search(a.tag, name, exact=a.exact)
     if not songs:
-        die(f"no {a.tag} matching '{name}'")
-    songs.sort(key=lambda s: (first(s.get("artist")), first(s.get("album")), s["file"].rsplit("/", 1)[0], _disc_track(s), s["file"]))
+        picks = _did_you_mean(p, a.tag, name)
+        songs = [s for pick in picks for s in p.search(a.tag, pick, exact=True)]
+        if not songs:
+            sys.exit(1)
+        name = ", ".join(picks)
+    # by artist, then album (untagged strays last), then disc/track
+    songs.sort(key=lambda s: (first(s.get("artist")), not first(s.get("album")), first(s.get("album")),
+                              s["file"].rsplit("/", 1)[0], _disc_track(s), s["file"]))
     if a.insert:
         for s in reversed(songs):
             p.insert_next(s["file"])
@@ -166,6 +174,72 @@ def cmd_play(ctx: Ctx, a) -> None:
             p.play(0)
     p.ensure_playing()
     print(f"{'inserted' if a.insert else 'added'} {len(songs)} songs for {a.tag} '{name}'")
+    show_queue(p, 10)
+
+
+def _did_you_mean(p: Player, tag: str, name: str) -> list[str]:
+    """Nothing matched: list close names (accents, typos) and, in a terminal, let the user pick."""
+    if tag not in ("artist", "album", "genre"):
+        print(f"no {tag} matching '{name}'", file=sys.stderr)
+        return []
+    names = p.list_tag(tag)
+    want = norm(name)
+    keyed = {}
+    for n in names:
+        keyed.setdefault(norm(n), n)
+    if want in keyed:  # only accents/case/punctuation differ: 'vali' -> 'Vàli'
+        print(f"using {tag} '{keyed[want]}'", file=sys.stderr)
+        return [keyed[want]]
+    contains = sorted((k for k in keyed if want and want in k), key=lambda k: (not k.startswith(want), len(k)))
+    close = [keyed[k] for k in contains]
+    close += [keyed[k] for k in difflib.get_close_matches(want, list(keyed), n=8, cutoff=0.75)
+              if keyed[k] not in close]
+    close = close[:20]
+    if not close:
+        print(f"no {tag} matching '{name}'", file=sys.stderr)
+        return []
+    if len(close) == 1:
+        print(f"using {tag} '{close[0]}'", file=sys.stderr)
+        return close
+    print(f"no {tag} '{name}'. Did you mean:", file=sys.stderr)
+    for i, n in enumerate(close, 1):
+        print(f"  {i:2}) {n}", file=sys.stderr)
+    if not sys.stdin.isatty():
+        return []
+    try:
+        ans = input("pick numbers (e.g. 1 3), Enter to cancel: ")
+    except EOFError:
+        return []
+    return [close[int(x) - 1] for x in ans.replace(",", " ").split() if x.isdigit() and 0 < int(x) <= len(close)]
+
+
+def show_queue(p: Player, n: int | None = 30, start_at_current: bool = True) -> None:
+    """Table of the queue like the old mpc-playlist: pos, artist, album, track, title."""
+    st = p.status()
+    cur = int(st["song"]) if "song" in st else -1
+    length = int(st.get("playlistlength", 0))
+    start = max(cur, 0) if start_at_current else 0
+    end = length if n is None else min(length, start + n)
+    rows = p.queue_range(start, end)
+    if not rows:
+        print("queue is empty")
+        return
+    width = shutil.get_terminal_size((120, 20)).columns
+    cells = [(f"{'▶' if int(s['pos']) == cur else ' '}{int(s['pos']) + 1}", first(s.get("artist")),
+              first(s.get("album")), first(s.get("track")).split("/")[0], first(s.get("title")) or s["file"])
+             for s in rows]
+    w = [max(len(c[i]) for c in cells) for i in range(4)]
+    w[1], w[2] = min(w[1], 28), min(w[2], 32)
+    for c in cells:
+        line = f"{c[0]:>{w[0]}}  {c[1][:w[1]]:<{w[1]}}  {c[2][:w[2]]:<{w[2]}}  {c[3]:>{w[3]}}  {c[4]}"
+        print(line[:width])
+    rest = length - end
+    if rest > 0:
+        print(f"  … {rest} more (mpdj queue --all)")
+
+
+def cmd_queue(ctx: Ctx, a) -> None:
+    show_queue(ctx.p, None if a.all else a.n, start_at_current=not a.all)
 
 
 # --- queue helpers ---------------------------------------------------------
@@ -515,14 +589,25 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("n", nargs="?", type=int, help="how many (default 10 for best/similar, all otherwise)")
     sp.add_argument("--keep", action="store_true", help="keep the upcoming queue instead of clearing it")
 
+    def play_args(sp):
+        sp.add_argument("name", nargs="+")
+        g = sp.add_mutually_exclusive_group()
+        g.add_argument("-a", "--add", action="store_true", help="append instead of replacing")
+        g.add_argument("-i", "--insert", action="store_true", help="insert after the current song")
+        sp.add_argument("-x", "--exact", action="store_true", help="exact tag match")
+        sp.add_argument("-s", "--shuffle", action="store_true")
+
     sp = add("play", cmd_play, "replace the queue with an artist/album/genre/title")
     sp.add_argument("tag", choices=["artist", "album", "genre", "title", "any"])
-    sp.add_argument("name", nargs="+")
-    g = sp.add_mutually_exclusive_group()
-    g.add_argument("-a", "--add", action="store_true", help="append instead of replacing")
-    g.add_argument("-i", "--insert", action="store_true", help="insert after the current song")
-    sp.add_argument("-x", "--exact", action="store_true", help="exact tag match")
-    sp.add_argument("-s", "--shuffle", action="store_true")
+    play_args(sp)
+    for tag in ("artist", "album", "genre", "title"):
+        sp = add(tag, cmd_play, f"same as `play {tag}` (-a add, -i insert, -x exact, -s shuffle)")
+        sp.set_defaults(tag=tag)
+        play_args(sp)
+
+    sp = add("queue", cmd_queue, "show the current and upcoming songs", aliases=["q"])
+    sp.add_argument("n", nargs="?", type=int, default=30, help="how many (default 30)")
+    sp.add_argument("--all", action="store_true", help="the whole queue, from the top")
 
     add("again", cmd_again, "play the current song again next")
     sp = add("next-album", cmd_album_jump, "jump to the next album in the queue")

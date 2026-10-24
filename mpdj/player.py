@@ -70,9 +70,15 @@ class Player:
         return (self.c.find if exact else self.c.search)(*pairs)
 
     def list_artists(self) -> list[str]:
-        out = self.c.list("artist")
+        return self.list_tag("artist")
+
+    def list_tag(self, tag: str) -> list[str]:
+        out = self.c.list(tag)
         # python-mpd2 >= 3 returns [{'artist': ...}]
-        return [first(a["artist"]) if isinstance(a, dict) else a for a in out if a]
+        return [first(a[tag]) if isinstance(a, dict) else a for a in out if a]
+
+    def queue_range(self, start: int, end: int) -> list[dict]:
+        return self.c.playlistinfo(f"{start}:{end}") if end > start else []
 
     # --- changing the queue ----------------------------------------------
     def add(self, file: str) -> None:

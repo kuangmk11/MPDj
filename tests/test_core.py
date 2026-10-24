@@ -302,3 +302,17 @@ def test_strip_brackets():
     assert strip_brackets("Song [Live (Demo)]") == "Song"
     assert strip_brackets("Song (Live") == "Song"
     assert lyrics.clean_title("[Untitled]") == "[Untitled]"
+
+
+def test_did_you_mean(monkeypatch):
+    from mpdj.cli import _did_you_mean
+    from mpdj.config import Config
+    from mpdj.player import Player
+    from .fakes import FakeMPD
+    lib = [{"file": "a.mp3", "artist": "Vàli", "title": "x"}, {"file": "b.mp3", "artist": "Forseti", "title": "y"},
+           {"file": "c.mp3", "artist": "Cavaliers", "title": "z"}]
+    p = Player(Config(), client=FakeMPD(lib))
+    assert _did_you_mean(p, "artist", "vali") == ["Vàli"]        # accents only
+    assert _did_you_mean(p, "artist", "forsetti") == ["Forseti"]  # one close typo
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    assert _did_you_mean(p, "artist", "zzzz") == []

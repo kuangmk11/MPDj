@@ -34,7 +34,12 @@ class FakeMPD:
 
     def playlistinfo(self, pos=None):
         songs = [dict(s, pos=str(i)) for i, s in enumerate(self.q)]
-        return songs if pos is None else songs[int(pos):int(pos) + 1]
+        if pos is None:
+            return songs
+        if isinstance(pos, str) and ":" in pos:
+            a, b = pos.split(":")
+            return songs[int(a):int(b)]
+        return songs[int(pos):int(pos) + 1]
 
     # search
     def search(self, *pairs):
@@ -52,7 +57,7 @@ class FakeMPD:
         return out
 
     def list(self, tag):
-        return [{tag: a} for a in sorted({s[tag] for s in self.library})]
+        return [{tag: a} for a in sorted({s[tag] for s in self.library if s.get(tag)})]
 
     # queue
     def _entry(self, file):

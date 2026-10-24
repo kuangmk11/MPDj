@@ -40,6 +40,8 @@ For ncmpcpp, append `contrib/ncmpcpp/bindings` to `~/.config/ncmpcpp/bindings` a
 | `mpdj more similar [N]` | similar-artists-oneshot | a mix of similar artists |
 | `mpdj more artist\|album\|genre\|song` | moreartist… | more of the same artist / rest of album / genre / other versions |
 | `mpdj play artist\|album\|genre\|title NAME [-a] [-i] [-x] [-s]` | artist, album… | replace (or add/insert) the queue |
+| `mpdj artist\|album\|genre\|title NAME [-a] [-i] [-x] [-s]` | artist, album… | shortcut for `play <tag>`; suggests close names when nothing matches |
+| `mpdj queue [N] [--all]` (or `q`) | mpc-playlist | current and upcoming songs as a table |
 | `mpdj again` / `next-album` / `prev-album` / `trim` / `shuffle` / `dedupe` | again, nextalbum… | queue helpers |
 | `mpdj rate 1-5`, `mpdj love` | mpd_Nstar.sh | 5 = loved playlist + Last.fm love; 1 = ban song + skip |
 | `mpdj ban artist\|album\|genre\|dir\|song\|string [VALUE] [--temp] [--purge]` | mpdskipper | ban and skip; `unban`, `bans` |
