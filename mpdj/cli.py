@@ -347,12 +347,16 @@ def cmd_lyrics(ctx: Ctx, a) -> None:
         if new and new != (text or "").strip():
             lyrics.save(ctx.con, artist, title, new, row["synced"] if row else None, "manual")
             p = lyrics.ncmpcpp_path(ctx.cfg.ncmpcpp_lyrics_dir, artist, title) if ctx.cfg.ncmpcpp_lyrics_dir else None
-            if p and p.exists():
+            if p:
+                p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(new + "\n")
             print("saved")
         return
     if not text:
-        die(f"no lyrics found for {artist} - {title}")
+        q = quote_plus(f'"{artist}" "{lyrics.clean_title(title)}" lyrics')
+        die(f"no lyrics found for {artist} - {title}\n"
+            f"search: https://www.google.com/search?q={q}\n"
+            f"found them? paste them in with: mpdj lyrics --edit")
     if a.synced and row["synced"]:
         print(row["synced"])
     else:

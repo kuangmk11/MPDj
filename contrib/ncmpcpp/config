@@ -5,4 +5,4 @@ mpd_port = 6600
 # mpd_music_dir = /mnt/g/Music
 ## mpdj's daemon writes "<artist> - <title>.txt" here as songs start
 lyrics_directory = ~/.lyrics
-lyrics_fetchers = genius, azlyrics, internet
+lyrics_fetchers = zeneszoveg, internet

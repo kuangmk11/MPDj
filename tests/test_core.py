@@ -250,3 +250,47 @@ def test_play_replace_add_insert(env):
     assert Counter(s["artist"] for s in mpd.q) == {"Bauhaus": 8}
     run(ctx, "play", "album", "Gold", "--insert")
     assert mpd.q[1]["artist"] == "Abba" and len(mpd.q) == 12
+
+
+class FakeHTTP:
+    """requests.Session stand-in: answers by URL substring, in order."""
+    def __init__(self, routes):
+        self.routes, self.calls = routes, []
+
+    def get(self, url, params=None, headers=None, timeout=None):
+        self.calls.append((url, params))
+        for key, answers in self.routes.items():
+            if key in url:
+                code, body = answers.pop(0) if len(answers) > 1 else answers[0]
+                return FakeResponse(code, body)
+        return FakeResponse(404, {})
+
+
+class FakeResponse:
+    def __init__(self, code, body):
+        self.status_code, self._body = code, body
+
+    def json(self):
+        return self._body
+
+
+def test_lyrics_clean_title_and_fuzzy_match(monkeypatch):
+    monkeypatch.setattr(lyrics.time, "sleep", lambda s: None)
+    assert lyrics.clean_title("Kameradschaft [Live]") == "Kameradschaft"
+    hit = {"artistName": "Forseti", "trackName": "Gesang der Jünglinge", "plainLyrics": "Heilig"}
+    http = FakeHTTP({"/get": [(404, {})], "/search": [(503, {}), (200, [hit])]})
+    got = lyrics.fetch_lrclib("Forseti", "Gesang Der Junglinge [Live]", http=http)
+    assert got["plainLyrics"] == "Heilig"
+    assert http.calls[0][1]["track_name"] == "Gesang Der Junglinge"  # brackets dropped
+
+
+def test_lyrics_busy_is_not_cached_as_miss(monkeypatch):
+    monkeypatch.setattr(lyrics.time, "sleep", lambda s: None)
+    monkeypatch.setattr(lyrics, "fetch_lrclib", lambda *a, **k: (_ for _ in ()).throw(lyrics.Busy("503")))
+    monkeypatch.setattr(lyrics, "fetch_lyrics_ovh", lambda a, t: "from ovh")
+    con = db.connect(":memory:")
+    row = lyrics.lookup(con, {"artist": "A", "title": "T"})
+    assert lyrics.text_of(row) == "from ovh" and row["source"] == "lyrics.ovh"
+    monkeypatch.setattr(lyrics, "fetch_lyrics_ovh", lambda a, t: None)
+    assert lyrics.lookup(con, {"artist": "B", "title": "T"}) is None
+    assert not db.is_fresh(con, "lyrics", "b|t", 3600)  # will be retried next time
