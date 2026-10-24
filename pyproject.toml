@@ -1,0 +1,16 @@
+[project]
+name = "mpdj"
+version = "0.1.0"
+description = "MPD DJ: smart queueing, ratings, bans, lyrics and discovery for MPD"
+requires-python = ">=3.11"
+dependencies = ["python-mpd2>=3.1", "requests>=2.31", "mutagen>=1.47"]
+
+[project.scripts]
+mpdj = "mpdj.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -1,0 +1,13 @@
+# Copy to ~/.config/systemd/user/ then: systemctl --user enable --now mpdj
+[Unit]
+Description=mpdj daemon (auto-queue, bans, history, lyrics prefetch)
+After=mpd.service
+Wants=mpd.service
+
+[Service]
+ExecStart=%h/.local/bin/mpdj daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

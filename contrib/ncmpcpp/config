@@ -1,0 +1,8 @@
+## mpdj-related settings. Merge into ~/.config/ncmpcpp/config
+mpd_host = localhost
+mpd_port = 6600
+## set this to the same path as music_directory in mpd.conf
+# mpd_music_dir = /mnt/g/Music
+## mpdj's daemon writes "<artist> - <title>.txt" here as songs start
+lyrics_directory = ~/.lyrics
+lyrics_fetchers = genius, azlyrics, internet
