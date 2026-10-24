@@ -4,7 +4,26 @@ MPD DJ: a rewrite of the old `/etc/myscripts/mpd` bash scripts as one Python too
 SQLite database. Put anything on and it keeps the queue going with similar music; one-key
 macros for "more of this"; ratings, bans, lyrics, and a discovery report.
 
-## Setup (WSL)
+## Install on another machine
+
+Ubuntu/Debian with systemd (on WSL: `[boot] systemd=true` in `/etc/wsl.conf`). Get this repo
+onto the machine (`git clone`), then:
+
+```bash
+./install.sh --music-dir /mnt/mp3/MP3 --share //10.10.10.4/Music --mount /mnt/mp3 \
+             --lastfm-key KEY --lastfm-user NAME
+```
+
+It installs mpd/mpc/ncmpcpp and mpdj, turns off Debian's system-wide MPD, writes the MPD, mpdj
+and ncmpcpp configs (keeping any that exist), adds the ncmpcpp key bindings, and enables the
+`mpd`, `mpdj` and (on WSL) audio-watchdog user services. `--share` mounts an SMB share
+read-only and asks for its login, which goes in a root-only file. `./install.sh --help` lists
+everything. It is safe to re-run.
+
+To bring ratings, bans, play history and lyrics along: `mpdj backup mpdj.db` on the old
+machine, copy the file over, and add `--db mpdj.db`.
+
+## Manual setup (WSL)
 
 ```bash
 sudo apt install mpd mpc ncmpcpp
@@ -60,6 +79,7 @@ For ncmpcpp, append `contrib/ncmpcpp/bindings` to `~/.config/ncmpcpp/bindings` a
 | `mpdj tabs [--bass] [--open]` | tab | Ultimate Guitar search link |
 | `mpdj loved-sync` | lastfm-loved | builds the `lastfm-loved` playlist |
 | `mpdj suggest [--fetch N] [--ignore NAME]` | suggestions | HTML report of artists you don't have |
+| `mpdj backup FILE` | | copy the database (for moving machines) |
 | `mpdj status` | mpc-status | what's playing, rating, queue, DB counts |
 | `mpdj daemon` | similar-artists-new, mpdskipper, lyrics-fetcher-daemon | see below |
 

@@ -569,6 +569,22 @@ def cmd_init(ctx: Ctx, a) -> None:
         print(f"{config.CONFIG_FILE} already exists")
 
 
+def cmd_backup(ctx: Ctx, a) -> None:
+    """Consistent copy of the DB, safe while the daemon is running (for moving machines)."""
+    import sqlite3
+    dest = Path(a.file).expanduser()
+    if dest.exists() and not a.force:
+        die(f"{dest} exists (use --force)")
+    dest.unlink(missing_ok=True)
+    out = sqlite3.connect(dest)
+    with out:
+        ctx.con.backup(out)
+    out.close()
+    counts = {t: ctx.con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("rating", "ban", "history", "lyrics")}
+    print(f"wrote {dest}: " + ", ".join(f"{v} {k}" for k, v in counts.items()))
+    print(f"on the new machine: ./install.sh --db {dest.name} ...")
+
+
 def cmd_daemon(ctx: Ctx, a) -> None:
     from . import daemon
     daemon.main(ctx.cfg)
@@ -670,6 +686,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--playlist-dir", help="folder holding linux/loved-master.lin.m3u")
     sp.add_argument("--tags", action="store_true", help="also read MYRATING tags from every mp3 (slow)")
 
+    sp = add("backup", cmd_backup, "copy the database (ratings, bans, history, lyrics) to a file")
+    sp.add_argument("file")
+    sp.add_argument("--force", action="store_true", help="overwrite FILE")
     add("init", cmd_init, "write a starter config file")
     add("daemon", cmd_daemon, "watch MPD: history, ban skipping, auto-queue, prefetch")
     return ap
