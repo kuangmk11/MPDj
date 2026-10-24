@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Restart WSLg's PulseAudio when it hangs (it does after Windows sleep/resume).
+
+Symptom: MPD says 'failed to connect: Timeout' and there is no sound until
+`wsl --shutdown`. WSLg's supervisor restarts PulseAudio when it exits, so
+killing just that process brings audio back without restarting WSL.
+
+Run every minute from a systemd user timer. Needs no sudo and no pactl.
+"""
+import socket
+import struct
+import subprocess
+import sys
+import time
+
+SOCKET = "/mnt/wslg/PulseServer"
+TIMEOUT = 3
+
+
+def pulse_alive() -> bool:
+    """Send a PulseAudio AUTH packet and wait for any reply."""
+    # tagstruct: command AUTH (8), tag 0, protocol version 32, 256-byte cookie (ignored: auth-anonymous)
+    body = (b"L" + struct.pack(">I", 8) + b"L" + struct.pack(">I", 0)
+            + b"L" + struct.pack(">I", 32) + b"x" + struct.pack(">I", 256) + bytes(256))
+    header = struct.pack(">IIIII", len(body), 0xFFFFFFFF, 0, 0, 0)
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(TIMEOUT)
+            s.connect(SOCKET)
+            s.sendall(header + body)
+            return len(s.recv(20)) == 20
+    except OSError:
+        return False
+
+
+def mpd_audio_error() -> bool:
+    try:
+        out = subprocess.run(["mpc", "status"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return "audio output" in out or "pulse" in out.lower()
+
+
+def restart_pulse() -> None:
+    subprocess.run(["/mnt/c/WINDOWS/system32/wsl.exe", "--system", "-u", "root", "--", "pkill", "-9", "-x", "pulseaudio"],
+                   capture_output=True, timeout=30)
+
+
+def main() -> int:
+    if pulse_alive():
+        return 0
+    time.sleep(5)  # don't act on a single slow answer
+    if pulse_alive():
+        return 0
+    print("WSLg PulseAudio is not answering; restarting it", flush=True)
+    restart_pulse()
+    for _ in range(10):
+        time.sleep(2)
+        if pulse_alive():
+            break
+    else:
+        print("PulseAudio still not answering; try `wsl --shutdown` from Windows", flush=True)
+        return 1
+    if mpd_audio_error():  # MPD paused itself when the output failed: carry on playing
+        subprocess.run(["mpc", "-q", "play"], timeout=10)
+        print("audio back; resumed MPD", flush=True)
+    else:
+        print("audio back", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    if "--check" in sys.argv:
+        print("alive" if pulse_alive() else "NOT answering")
+        sys.exit(0)
+    sys.exit(main())

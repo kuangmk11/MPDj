@@ -29,6 +29,16 @@ If the music is on a network share, also copy `contrib/systemd/mpd.service.d/` t
 `~/.config/systemd/user/`. Without it MPD can start before the share is mounted and fail every
 file with "Too many levels of symbolic links".
 
+**No sound after Windows sleep (WSL):** WSLg's PulseAudio hangs and MPD reports
+`failed to connect: Timeout`. `contrib/wslg/wslg-audio-watchdog` checks it every minute and
+restarts only that process (WSLg brings it back), then resumes MPD:
+
+```bash
+cp contrib/wslg/wslg-audio-watchdog ~/.local/bin/
+cp contrib/wslg/wslg-audio-watchdog.{service,timer} ~/.config/systemd/user/
+systemctl --user enable --now wslg-audio-watchdog.timer
+```
+
 For ncmpcpp, append `contrib/ncmpcpp/bindings` to `~/.config/ncmpcpp/bindings` and merge
 `contrib/ncmpcpp/config`.
 

@@ -1,0 +1,10 @@
+# Copy with the .timer to ~/.config/systemd/user/, then:
+#   systemctl --user enable --now wslg-audio-watchdog.timer
+[Unit]
+Description=Restart WSLg PulseAudio if it hangs (after Windows sleep)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/wslg-audio-watchdog
+# wsl.exe can't translate a Linux home path; start from C:\ to keep it quiet
+WorkingDirectory=/mnt/c
