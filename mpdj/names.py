@@ -4,11 +4,23 @@ from __future__ import annotations
 import re
 import unicodedata
 
-_BRACKETS = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]")
 _PUNCT = re.compile(r"[^\w\s]")
 _SPACES = re.compile(r"\s+")
 _SUFFIX = re.compile(r"\s+-\s+[^-]*\b(remaster(ed)?|version|mix|edit|live|mono|stereo|demo|single)\b.*$", re.I)
 _LIVE = re.compile(r"[\(\[]\s*live\b|\blive (at|in|from)\b", re.I)
+
+
+def strip_brackets(s: str) -> str:
+    """Drop everything inside () and [], nested or unclosed: 'Song [Live (Demo)]' -> 'Song'."""
+    out, depth = [], 0
+    for c in s:
+        if c in "([":
+            depth += 1
+        elif c in ")]":
+            depth = max(depth - 1, 0)
+        elif depth == 0:
+            out.append(c)
+    return _SPACES.sub(" ", "".join(out)).strip()
 
 
 def fold(s: str) -> str:
@@ -25,7 +37,7 @@ def norm(s: str | None, drop_brackets: bool = False) -> str:
         return ""
     s = fold(s).lower().replace("&", " and ")
     if drop_brackets:
-        s = _SUFFIX.sub("", _BRACKETS.sub("", s))
+        s = _SUFFIX.sub("", strip_brackets(s)) or s  # '[Untitled]' keeps its name
     s = s.replace("'", "").replace("’", "")
     s = _PUNCT.sub(" ", s)
     return _SPACES.sub(" ", s).strip()

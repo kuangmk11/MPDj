@@ -16,7 +16,7 @@ from . import autoqueue, config, db, legacy, lyrics, report, state
 from .config import DATA_DIR
 from .lastfm import LastFM, LastFMError
 from .match import artist_songs, find_track
-from .names import first, norm
+from .names import first, norm, strip_brackets
 from .player import Player
 
 LOVED_PLAYLIST = "loved"
@@ -353,7 +353,7 @@ def cmd_lyrics(ctx: Ctx, a) -> None:
             print("saved")
         return
     if not text:
-        q = quote_plus(f'"{artist}" "{lyrics.clean_title(title)}" lyrics')
+        q = quote_plus(f'"{strip_brackets(artist) or artist}" "{lyrics.clean_title(title)}" lyrics')
         die(f"no lyrics found for {artist} - {title}\n"
             f"search: https://www.google.com/search?q={q}\n"
             f"found them? paste them in with: mpdj lyrics --edit")

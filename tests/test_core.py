@@ -294,3 +294,11 @@ def test_lyrics_busy_is_not_cached_as_miss(monkeypatch):
     monkeypatch.setattr(lyrics, "fetch_lyrics_ovh", lambda a, t: None)
     assert lyrics.lookup(con, {"artist": "B", "title": "T"}) is None
     assert not db.is_fresh(con, "lyrics", "b|t", 3600)  # will be retried next time
+
+
+def test_strip_brackets():
+    from mpdj.names import strip_brackets
+    assert strip_brackets("Song (Live) [2011 Remaster]") == "Song"
+    assert strip_brackets("Song [Live (Demo)]") == "Song"
+    assert strip_brackets("Song (Live") == "Song"
+    assert lyrics.clean_title("[Untitled]") == "[Untitled]"

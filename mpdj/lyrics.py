@@ -10,7 +10,7 @@ from urllib.parse import quote
 import requests
 
 from . import db
-from .names import first, norm, norm_title
+from .names import first, norm, norm_title, strip_brackets
 
 LRCLIB = "https://lrclib.net/api"
 _TS = re.compile(r"^\s*\[\d+:\d+(?:[.:]\d+)?\]\s?", re.M)
@@ -42,7 +42,7 @@ def delete(con: sqlite3.Connection, artist: str, title: str) -> int:
 
 HEADERS = {"User-Agent": "mpdj/0.1 (personal MPD helper)"}
 _RETRY = (429, 500, 502, 503, 504)
-_EXTRA = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]|\s+-\s+[^-]*\b(remaster(ed)?|version|mix|edit|live|mono|stereo|demo|single)\b.*$", re.I)
+_SUFFIX = re.compile(r"\s+-\s+[^-]*\b(remaster(ed)?|version|mix|edit|live|mono|stereo|demo|single)\b.*$", re.I)
 
 
 class Busy(requests.RequestException):
@@ -51,7 +51,7 @@ class Busy(requests.RequestException):
 
 def clean_title(title: str) -> str:
     """'Kameradschaft [Live]' -> 'Kameradschaft' (what lyrics sites file songs under)."""
-    return _EXTRA.sub("", title).strip() or title
+    return _SUFFIX.sub("", strip_brackets(title)).strip() or title
 
 
 def _get(http: requests.Session, url: str, params: dict | None = None, tries: int = 3) -> requests.Response:
