@@ -1,0 +1,13 @@
+# Scrobbles what MPD plays to Last.fm. install.sh writes the config.
+[Unit]
+Description=mpdscribble Last.fm scrobbler
+After=mpd.service
+Wants=mpd.service
+
+[Service]
+ExecStart=/usr/bin/mpdscribble --no-daemon --conf %h/.config/mpdscribble/mpdscribble.conf
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

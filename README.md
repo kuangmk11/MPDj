@@ -16,7 +16,9 @@ onto the machine (`git clone`), then:
 
 It installs mpd/mpc/ncmpcpp and mpdj, turns off Debian's system-wide MPD, writes the MPD, mpdj
 and ncmpcpp configs (keeping any that exist), adds the ncmpcpp key bindings, and enables the
-`mpd`, `mpdj` and (on WSL) audio-watchdog user services. `--share` mounts an SMB share
+`mpd`, `mpdj`, `mpdscribble` (Last.fm scrobbling; asks for your Last.fm login and saves
+the password as an MD5 hash) and, on WSL, audio-watchdog user services. `--no-scrobble` skips
+scrobbling. `--share` mounts an SMB share
 read-only and asks for its login, which goes in a root-only file. `./install.sh --help` lists
 everything. It is safe to re-run.
 
@@ -50,7 +52,11 @@ file with "Too many levels of symbolic links".
 
 **No sound after Windows sleep (WSL):** WSLg's PulseAudio hangs and MPD reports
 `failed to connect: Timeout`. `contrib/wslg/wslg-audio-watchdog` checks it every minute and
-restarts only that process (WSLg brings it back), then resumes MPD:
+restarts only that process (WSLg brings it back), then resumes MPD. Sound that turns
+**choppy** after the screen wakes can't be detected (the server still answers): press Alt-F in
+ncmpcpp or run `wslg-audio-watchdog --restart`.
+
+
 
 ```bash
 cp contrib/wslg/wslg-audio-watchdog ~/.local/bin/

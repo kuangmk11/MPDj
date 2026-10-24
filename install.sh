@@ -8,7 +8,7 @@
 set -euo pipefail
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-MUSIC_DIR="" SHARE="" MOUNT="/mnt/mp3" LFM_KEY="${LASTFM_API_KEY:-}" LFM_USER="" DB="" APT=1 LINGER=0
+MUSIC_DIR="" SHARE="" MOUNT="/mnt/mp3" LFM_KEY="${LASTFM_API_KEY:-}" LFM_USER="" DB="" APT=1 LINGER=0 SCROBBLE=1
 
 usage() {
     sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'
@@ -21,6 +21,7 @@ Options:
   --lastfm-key KEY     Last.fm API key (or set LASTFM_API_KEY); needed for similar artists
   --lastfm-user NAME   Last.fm username (for `loved-sync` and `rate 5`)
   --db FILE            copy an mpdj.db from another machine (ratings, bans, history, lyrics)
+  --no-scrobble        don't set up Last.fm scrobbling (mpdscribble)
   --linger             start MPD at boot, not at first login
   --no-apt             don't install packages
 EOF
@@ -35,6 +36,7 @@ while [[ $# -gt 0 ]]; do
         --lastfm-user) LFM_USER=$2; shift ;;
         --db) DB=$2; shift ;;
         --linger) LINGER=1 ;;
+        --no-scrobble) SCROBBLE=0 ;;
         --no-apt) APT=0 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
@@ -65,6 +67,7 @@ if (( APT )); then
     say "Packages"
     pkgs=(mpd mpc ncmpcpp curl)
     [[ -n $SHARE ]] && pkgs+=(cifs-utils)
+    (( SCROBBLE )) && pkgs+=(mpdscribble)
     missing=(); for p in "${pkgs[@]}"; do dpkg -s "$p" >/dev/null 2>&1 || missing+=("$p"); done
     if (( ${#missing[@]} )); then
         sudo apt-get update -q && sudo apt-get install -y "${missing[@]}"
@@ -75,6 +78,12 @@ if (( APT )); then
        || systemctl is-active -q mpd.service 2>/dev/null; then
         sudo systemctl disable --now mpd.service mpd.socket
         ok "turned off the system-wide MPD (it would take port 6600)"
+    fi
+    # Same for the package's system-wide scrobbler: we run it as the user, next to MPD.
+    if (( SCROBBLE )) && { systemctl is-enabled -q mpdscribble.service 2>/dev/null \
+                           || systemctl is-active -q mpdscribble.service 2>/dev/null; }; then
+        sudo systemctl disable --now mpdscribble.service
+        ok "turned off the system-wide mpdscribble"
     fi
 fi
 
@@ -165,6 +174,38 @@ sed -i '/^## >>> mpdj/,/^## <<< mpdj/d' "$b"
 { echo "## >>> mpdj (managed by $REPO/install.sh)"; cat "$REPO/contrib/ncmpcpp/bindings"; echo "## <<< mpdj"; } >> "$b"
 ok "ncmpcpp key bindings (Alt+key) in $b"
 
+# Last.fm scrobbling. mpdscribble only needs the username and password (it has its own
+# API key); the password is stored as its MD5 hash in a file only the user can read.
+SC=~/.config/mpdscribble/mpdscribble.conf
+if (( SCROBBLE )) && ! command -v mpdscribble >/dev/null; then
+    echo "   mpdscribble isn't installed (sudo apt install mpdscribble), skipping scrobbling" >&2
+    SCROBBLE=0
+fi
+if (( SCROBBLE )) && [[ -f $SC ]]; then
+    ok "kept $SC"
+elif (( SCROBBLE )); then
+    mkdir -p ~/.config/mpdscribble ~/.cache/mpdscribble
+    default_user=${LFM_USER:-$(sed -n 's/^username = "\([^"]*\)".*/\1/p' ~/.config/mpdj/config.toml)}
+    read -rp "   Last.fm username for scrobbling${default_user:+ [$default_user]}: " s_user
+    s_user=${s_user:-$default_user}
+    read -rsp "   Last.fm password (saved as an MD5 hash): " s_pass; echo
+    if [[ -n $s_user && -n $s_pass ]]; then
+        hash=$(printf %s "$s_pass" | md5sum | cut -d' ' -f1)
+        unset s_pass
+        ( umask 077
+          printf '%s\n' \
+            "# mpdscribble: scrobbles MPD plays. Written by $REPO/install.sh. Keep private." \
+            "host = localhost" "port = 6600" "log = -" "verbose = 1" "" \
+            "[last.fm]" "url = https://post.audioscrobbler.com/" \
+            "username = $s_user" "password = $hash" \
+            "journal = $HOME/.cache/mpdscribble/lastfm.journal" > "$SC" )
+        ok "wrote $SC (plays made while offline are sent later)"
+    else
+        echo "   no username/password: skipping scrobbling (re-run to set it up)" >&2
+        SCROBBLE=0
+    fi
+fi
+
 # --- services ---------------------------------------------------------------------
 say "Services"
 U=~/.config/systemd/user
@@ -182,6 +223,10 @@ RestartSec=10
 EOF
 cp "$REPO/contrib/systemd/mpdj.service" "$U/"
 units=(mpd.service mpdj.service)
+if (( SCROBBLE )); then
+    cp "$REPO/contrib/mpdscribble/mpdscribble.service" "$U/"
+    units+=(mpdscribble.service)
+fi
 if (( WSL )); then
     cp "$REPO/contrib/wslg/wslg-audio-watchdog" ~/.local/bin/
     cp "$REPO/contrib/wslg/wslg-audio-watchdog."{service,timer} "$U/"
@@ -200,6 +245,7 @@ if [[ -n $DB ]]; then
 fi
 systemctl --user restart mpd.service
 systemctl --user restart mpdj.service
+(( SCROBBLE )) && systemctl --user restart mpdscribble.service
 (( WSL )) && systemctl --user start wslg-audio-watchdog.timer
 ok "running: ${units[*]}"
 

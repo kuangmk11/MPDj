@@ -33,3 +33,6 @@ def_key "alt-x"
   run_external_command "mpdj ban artist --purge >/dev/null 2>&1"
 def_key "alt-z"
   run_external_command "mpdj ban album --purge >/dev/null 2>&1"
+## WSL: choppy or no sound after the screen/PC wakes -> restart WSLg's audio server
+def_key "alt-f"
+  run_external_command "wslg-audio-watchdog --restart >/dev/null 2>&1"

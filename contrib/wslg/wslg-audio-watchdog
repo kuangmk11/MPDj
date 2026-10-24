@@ -6,6 +6,7 @@ Symptom: MPD says 'failed to connect: Timeout' and there is no sound until
 killing just that process brings audio back without restarting WSL.
 
 Run every minute from a systemd user timer. Needs no sudo and no pactl.
+`wslg-audio-watchdog --restart` restarts it now (for choppy sound after the screen wakes).
 """
 import socket
 import struct
@@ -46,13 +47,25 @@ def restart_pulse() -> None:
                    capture_output=True, timeout=30)
 
 
-def main() -> int:
-    if pulse_alive():
-        return 0
-    time.sleep(5)  # don't act on a single slow answer
-    if pulse_alive():
-        return 0
-    print("WSLg PulseAudio is not answering; restarting it", flush=True)
+def mpd_playing() -> bool:
+    try:
+        out = subprocess.run(["mpc", "status"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return "[playing]" in out
+
+
+def main(force: bool = False) -> int:
+    was_playing = mpd_playing()
+    if not force:
+        if pulse_alive():
+            return 0
+        time.sleep(5)  # don't act on a single slow answer
+        if pulse_alive():
+            return 0
+        print("WSLg PulseAudio is not answering; restarting it", flush=True)
+    else:
+        print("restarting WSLg PulseAudio", flush=True)
     restart_pulse()
     for _ in range(10):
         time.sleep(2)
@@ -61,7 +74,8 @@ def main() -> int:
     else:
         print("PulseAudio still not answering; try `wsl --shutdown` from Windows", flush=True)
         return 1
-    if mpd_audio_error():  # MPD paused itself when the output failed: carry on playing
+    time.sleep(1)
+    if was_playing or mpd_audio_error():  # MPD pauses when its output fails: carry on playing
         subprocess.run(["mpc", "-q", "play"], timeout=10)
         print("audio back; resumed MPD", flush=True)
     else:
@@ -73,4 +87,6 @@ if __name__ == "__main__":
     if "--check" in sys.argv:
         print("alive" if pulse_alive() else "NOT answering")
         sys.exit(0)
-    sys.exit(main())
+    # --restart: e.g. choppy sound after the screen wakes. PulseAudio still answers then,
+    # so the timer can't tell; restarting it fixes the sound.
+    sys.exit(main(force="--restart" in sys.argv))
