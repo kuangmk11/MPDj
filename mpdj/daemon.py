@@ -20,30 +20,46 @@ from .player import Player
 
 log = logging.getLogger("mpdj.daemon")
 REFILL_COOLDOWN = 20  # seconds between refills for the same song
+RETRIES = 4           # lyrics lookups retried while the sites are busy
+RETRY_SECONDS = 30
 
 
 class Prefetcher(threading.Thread):
-    """Background thread with its own DB connection (sqlite objects can't cross threads)."""
+    """Background thread with its own DB connection (sqlite objects can't cross threads).
+
+    Jobs are (song, attempt). Lyrics come first so they're saved before ncmpcpp asks;
+    if the lyrics sites are busy the job is retried a few times, RETRY_SECONDS apart.
+    """
 
     def __init__(self, cfg: Config):
         super().__init__(daemon=True, name="prefetch")
         self.cfg = cfg
-        self.jobs: queue.Queue[dict] = queue.Queue()
+        self.jobs: queue.Queue[tuple[dict, int]] = queue.Queue()
+
+    def put(self, song: dict, attempt: int = 0) -> None:
+        self.jobs.put((song, attempt))
 
     def run(self) -> None:
         con = db.connect(self.cfg.db_path)
         lfm = LastFM(self.cfg, con)
         while True:
-            song = self.jobs.get()
-            artist = first(song.get("artist"))
+            song, attempt = self.jobs.get()
+            artist, title = first(song.get("artist")), first(song.get("title"))
             try:
-                if artist and self.cfg.lastfm_api_key:
+                row = lyrics.lookup(con, song)
+                text = lyrics.text_of(row)
+                if text:
+                    lyrics.export_ncmpcpp(self.cfg.ncmpcpp_lyrics_dir, song, text)
+                elif artist and title and not lyrics.was_tried(con, artist, title) and attempt < RETRIES:
+                    # sites were busy or down: nothing cached, so try again shortly
+                    log.info("lyrics busy, retrying in %ss: %s - %s", RETRY_SECONDS, artist, title)
+                    t = threading.Timer(RETRY_SECONDS, self.put, (song, attempt + 1))
+                    t.daemon = True
+                    t.start()
+                if artist and self.cfg.lastfm_api_key and attempt == 0:
                     lfm.info(artist)
                     lfm.similar(artist)
                     lfm.top_tracks(artist)
-                text = lyrics.text_of(lyrics.lookup(con, song))
-                if text:
-                    lyrics.export_ncmpcpp(self.cfg.ncmpcpp_lyrics_dir, song, text)
             except Exception:
                 log.exception("prefetch failed for %s", song.get("file"))
 
@@ -62,6 +78,7 @@ class Daemon:
         self.observed_at = 0.0
         self.playing = False
         self.last_refill = 0.0
+        self.next_file: str | None = None
 
     def run_forever(self) -> None:
         self.prefetch.start()
@@ -111,7 +128,7 @@ class Daemon:
                     p.next()
                     return  # the skip fires another event
                 self.hist_id = state.start_play(self.con, self.song)
-                self.prefetch.jobs.put(self.song)
+                self.prefetch.put(self.song)
                 log.info("now playing: %s - %s", first(self.song.get("artist")), first(self.song.get("title")))
             self.last_refill = 0
         self.elapsed = float(st.get("elapsed", 0) or 0)
@@ -121,6 +138,12 @@ class Daemon:
         if self.song and (now - self.last_refill) > REFILL_COOLDOWN and autoqueue.needs_refill(p, self.cfg):
             self.last_refill = now
             self.refill(p)
+
+        # get the next song's lyrics ready before it starts
+        nxt = p.next_song() if self.song else None
+        if nxt and nxt["file"] != self.next_file:
+            self.next_file = nxt["file"]
+            self.prefetch.put(nxt)
 
     def close_history(self, now: float | None = None) -> None:
         if self.hist_id is None:

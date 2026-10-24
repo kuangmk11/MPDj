@@ -32,8 +32,9 @@ class FakeMPD:
     def currentsong(self):
         return dict(self.q[self.pos]) if self.pos is not None and self.q else {}
 
-    def playlistinfo(self):
-        return [dict(s, pos=str(i)) for i, s in enumerate(self.q)]
+    def playlistinfo(self, pos=None):
+        songs = [dict(s, pos=str(i)) for i, s in enumerate(self.q)]
+        return songs if pos is None else songs[int(pos):int(pos) + 1]
 
     # search
     def search(self, *pairs):

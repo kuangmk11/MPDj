@@ -13,7 +13,7 @@ class NoPrefetch:
     def __init__(self):
         self.jobs = []
 
-    def put(self, s):
+    def put(self, s, attempt=0):
         self.jobs.append(s)
 
 
@@ -23,7 +23,7 @@ def make(tmp_path):
     cfg.lastfm_api_key = ""
     d = Daemon(cfg)
     d.lfm = FakeLastFM(SIMILAR)
-    d.prefetch.jobs = NoPrefetch()
+    d.prefetch = NoPrefetch()
     mpd = FakeMPD(LIB)
     return d, mpd, Player(cfg, client=mpd)
 
@@ -35,7 +35,7 @@ def test_refills_when_queue_short(tmp_path):
     mpd.play(0)
     d.on_event(p, {"player"})
     assert len(mpd.q) == 1 + d.cfg.batch
-    assert d.prefetch.jobs.jobs[0]["file"] == LIB[0]["file"]
+    assert d.prefetch.jobs[0]["file"] == LIB[0]["file"]
     # a second event right away doesn't refill again (cooldown + enough queued)
     d.on_event(p, {"playlist"})
     assert len(mpd.q) == 1 + d.cfg.batch
@@ -71,3 +71,15 @@ def test_reconnect_is_not_a_skip(tmp_path):
     assert d.hist_id == hist
     rows = d.con.execute("SELECT skipped FROM history").fetchall()
     assert len(rows) == 1 and not rows[0]["skipped"]
+
+
+def test_prefetches_next_song(tmp_path):
+    d, mpd, p = make(tmp_path)
+    mpd.consume = "0"
+    for s in LIB[:3]:
+        mpd.add(s["file"])
+    mpd.play(0)
+    d.on_event(p, {"player"})
+    assert [s["file"] for s in d.prefetch.jobs] == [LIB[0]["file"], LIB[1]["file"]]
+    d.on_event(p, {"playlist"})  # nothing changed: not queued again
+    assert len(d.prefetch.jobs) == 2

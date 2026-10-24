@@ -145,6 +145,11 @@ def lookup(con: sqlite3.Connection, song: dict, refresh: bool = False) -> sqlite
     return get_cached(con, artist, title)
 
 
+def was_tried(con: sqlite3.Connection, artist: str, title: str) -> bool:
+    """True if a lookup got a real answer recently (found, or not on any site)."""
+    return db.is_fresh(con, "lyrics", f"{norm(artist)}|{norm_title(title)}", 7 * 86400)
+
+
 def text_of(row: sqlite3.Row | None) -> str | None:
     if not row:
         return None

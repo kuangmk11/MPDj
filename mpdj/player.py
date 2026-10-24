@@ -44,6 +44,20 @@ class Player:
     def queue(self) -> list[dict]:
         return self.c.playlistinfo()
 
+    def next_song(self) -> dict | None:
+        """The song that will play after this one (None at the end of the queue)."""
+        st = self.status()
+        if "nextsong" in st:
+            pos = int(st["nextsong"])
+        elif "song" in st:
+            pos = int(st["song"]) + 1
+        else:
+            return None
+        if pos >= int(st.get("playlistlength", 0)):
+            return None
+        found = self.c.playlistinfo(pos)
+        return found[0] if found else None
+
     def songs_after_current(self) -> int:
         st = self.status()
         length = int(st.get("playlistlength", 0))
