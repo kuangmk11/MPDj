@@ -127,6 +127,8 @@ class Daemon:
                     self.song_id = None
                     p.next()
                     return  # the skip fires another event
+                if not state.was_autoqueued(self.con, self.song["file"]):
+                    state.set_anchor(self.con, self.song)  # you picked this one
                 self.hist_id = state.start_play(self.con, self.song)
                 self.prefetch.put(self.song)
                 log.info("now playing: %s - %s", first(self.song.get("artist")), first(self.song.get("title")))
@@ -155,14 +157,18 @@ class Daemon:
                                  float(dur) if dur else None)
         if skipped and self.song:
             log.info("skip logged: %s", self.song["file"])
+        if self.song:
+            state.forget_autoqueued(self.con, self.song["file"])
         self.hist_id = None
 
     def refill(self, p: Player) -> None:
         picker = autoqueue.Picker(p, self.con, self.lfm, self.cfg)
-        songs = picker.similar_mix(self.song, self.cfg.batch)
+        seed = state.anchor(self.con) or self.song
+        songs = picker.similar_mix(seed, self.cfg.batch, current=self.song)
+        state.mark_autoqueued(self.con, [s["file"] for s in songs])
         for s in songs:
             p.add(s["file"])
-        log.info("queued %d: %s", len(songs),
+        log.info("queued %d like %s: %s", len(songs), first(seed.get("artist")),
                  ", ".join(first(s.get("artist")) for s in songs) or "nothing found")
 
 

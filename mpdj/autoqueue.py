@@ -6,6 +6,9 @@ import random
 from . import state
 from .names import first, norm, norm_artist
 
+HUB_MIN_SEEDS = 10  # need this many cached similar lists before hub counts mean anything
+HUB_FLOOR = 0.1     # an artist on every list keeps (0.1)^2 = 1% of its weight
+
 
 class Picker:
     """Collects everything needed to filter songs once, then picks many."""
@@ -18,6 +21,7 @@ class Picker:
         self.recent = state.recently_played(con, cfg.recent_days)
         self.taken = {s["file"] for s in player.queue()}
         self._library_artists: dict[str, str] | None = None
+        self._hubs: dict[str, float] | None = None
 
     # --- filters ----------------------------------------------------------
     def ok(self, song: dict) -> bool:
@@ -49,20 +53,35 @@ class Picker:
         return song
 
     # --- strategies -------------------------------------------------------
+    def hub_penalty(self) -> dict[str, float]:
+        """norm(artist) -> weight multiplier. Artists that turn up on many of the cached
+        similar lists (OMD, Howard Jones, ABC...) are generic hubs; picking them by match
+        alone pulls every mix toward them."""
+        if self._hubs is None:
+            self._hubs = {}
+            seeds = self.con.execute("SELECT COUNT(DISTINCT artist) FROM similar").fetchone()[0]
+            if seeds >= HUB_MIN_SEEDS:
+                for r in self.con.execute("SELECT other_norm, COUNT(*) FROM similar GROUP BY other_norm"):
+                    frac = r[1] / seeds
+                    self._hubs[r[0]] = max(HUB_FLOOR, 1 - frac) ** 2
+        return self._hubs
+
     def similar_pool(self, artist: str) -> list[tuple[str, float]]:
         """Similar artists that exist in the library: [(library name, weight)]."""
         lib = self.library_artists()
+        hubs = self.hub_penalty()
         seed = norm_artist(artist, self.cfg.aliases)
         pool = []
         for name, match in self.lfm.similar(artist):
             n = norm(name)
             if n in lib and n != seed:
-                pool.append((lib[n], max(match, 0.05)))
+                pool.append((lib[n], max(match, 0.05) * hubs.get(n, 1.0)))
         return pool
 
-    def similar_mix(self, seed: dict, n: int) -> list[dict]:
-        """n songs: similar artists weighted by Last.fm match, with the seed artist itself
-        about 1 in `same_artist_every` picks, never the same artist twice in a row."""
+    def similar_mix(self, seed: dict, n: int, current: dict | None = None) -> list[dict]:
+        """n songs: the seed's similar artists weighted by Last.fm match (minus the hub
+        penalty), with the seed artist itself about 1 in `same_artist_every` picks, never
+        the same artist twice in a row. `current` is what's playing, if not the seed."""
         artist = first(seed.get("artist"))
         seed_norm = norm(artist)
         pool = dict(self.similar_pool(artist)) if artist else {}
@@ -74,7 +93,8 @@ class Picker:
             return [s for s in songs[name] if s["file"] not in self.taken]
 
         out: list[dict] = []
-        last = seed_norm  # the seed is playing now, so don't follow it with itself
+        # don't follow what's playing with the same artist
+        last = norm(first((current or seed).get("artist")))
         seed_left = bool(artist)
         every = max(self.cfg.same_artist_every, 1)
         while len(out) < n and (pool or seed_left):
@@ -100,16 +120,16 @@ class Picker:
             out.append(self.take(song))
             last = norm(name)
         if len(out) < n:
-            out += self.genre_fill(seed, n - len(out))
+            out += self.genre_fill(seed, n - len(out), current)
         return out
 
-    def genre_fill(self, seed: dict, n: int) -> list[dict]:
+    def genre_fill(self, seed: dict, n: int, current: dict | None = None) -> list[dict]:
         genre = first(seed.get("genre"))
         if not genre or n <= 0:
             return []
         songs = [s for s in self.p.search("genre", genre) if self.ok(s)]
         self.rng.shuffle(songs)
-        out, last = [], norm(first(seed.get("artist")))
+        out, last = [], norm(first((current or seed).get("artist")))
         for s in songs:
             a = norm(first(s.get("artist")))
             if a != last and s["file"] not in self.taken:

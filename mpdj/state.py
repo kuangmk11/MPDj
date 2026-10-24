@@ -1,6 +1,7 @@
 """Ratings, bans and play history (replaces mpdskipper's text lists and ~/.PLAYED)."""
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 
@@ -113,3 +114,34 @@ def end_play(con: sqlite3.Connection, hist_id: int, seconds: float, min_play: fl
 def recently_played(con: sqlite3.Connection, days: float) -> set[str]:
     since = db.now() - days * 86400
     return {r["file"] for r in con.execute("SELECT DISTINCT file FROM history WHERE started_at >= ?", (since,))}
+
+
+# --- auto-DJ seed ------------------------------------------------------------
+# Refills are built from the last song *you* picked (the anchor), not from the song
+# playing now. Seeding from auto-picked songs makes a random walk that drifts to the
+# most generic, best-connected artists.
+def mark_autoqueued(con: sqlite3.Connection, files) -> None:
+    t = db.now()
+    con.execute("DELETE FROM autoqueued WHERE added_at < ?", (t - 30 * 86400,))
+    con.executemany("INSERT OR REPLACE INTO autoqueued(file,added_at) VALUES(?,?)",
+                    [(f, t) for f in files])
+
+
+def was_autoqueued(con: sqlite3.Connection, file: str) -> bool:
+    return con.execute("SELECT 1 FROM autoqueued WHERE file=?", (file,)).fetchone() is not None
+
+
+def forget_autoqueued(con: sqlite3.Connection, file: str) -> None:
+    """Called when the song is done, so a later replay you queue yourself counts as yours.
+    (Not at start: a daemon restart mid-song would then take it for your pick.)"""
+    con.execute("DELETE FROM autoqueued WHERE file=?", (file,))
+
+
+def set_anchor(con: sqlite3.Connection, song: dict) -> None:
+    keep = {k: song[k] for k in ("file", "artist", "title", "album", "genre") if song.get(k)}
+    db.set_meta(con, "anchor", json.dumps(keep))
+
+
+def anchor(con: sqlite3.Connection) -> dict | None:
+    v = db.get_meta(con, "anchor")
+    return json.loads(v) if v else None

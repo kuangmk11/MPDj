@@ -316,3 +316,13 @@ def test_did_you_mean(monkeypatch):
     assert _did_you_mean(p, "artist", "forsetti") == ["Forseti"]  # one close typo
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     assert _did_you_mean(p, "artist", "zzzz") == []
+
+
+def test_hub_artists_are_down_weighted(env):
+    cfg, con, mpd, p = env
+    # New Order is on every cached similar list, Bauhaus on one: a generic hub vs a real match
+    rows = [(f"seed{i}", "New Order", "new order", 0.9) for i in range(20)]
+    rows.append(("seed0", "Bauhaus", "bauhaus", 0.5))
+    con.executemany("INSERT INTO similar(artist,other,other_norm,match) VALUES(?,?,?,?)", rows)
+    pool = dict(Picker(p, con, FakeLastFM(SIMILAR), cfg).similar_pool("Joy Division"))
+    assert pool["New Order"] < 0.05 < pool["Bauhaus"]

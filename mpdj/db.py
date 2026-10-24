@@ -74,6 +74,10 @@ CREATE TABLE IF NOT EXISTS suggest_ignore (
     name TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS autoqueued (    -- songs the auto-DJ added (not your own picks)
+    file TEXT PRIMARY KEY,
+    added_at REAL NOT NULL
+);
 """
 
 

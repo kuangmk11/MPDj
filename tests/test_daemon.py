@@ -83,3 +83,40 @@ def test_prefetches_next_song(tmp_path):
     assert [s["file"] for s in d.prefetch.jobs] == [LIB[0]["file"], LIB[1]["file"]]
     d.on_event(p, {"playlist"})  # nothing changed: not queued again
     assert len(d.prefetch.jobs) == 2
+
+
+def test_refills_stay_anchored_to_your_pick(tmp_path):
+    """Refills are seeded from the last song you chose, not from the auto-picked song
+    playing now (that random walk drifted every mix to generic 80s pop)."""
+    d, mpd, p = make(tmp_path)
+    d.lfm = FakeLastFM({**SIMILAR, "the cure": [("Abba", 1.0)]})
+    mpd.add(LIB[0]["file"])  # Joy Division, picked by you
+    mpd.play(0)
+    d.on_event(p, {"player"})
+    assert state.anchor(d.con)["artist"] == "Joy Division"
+    # play through the auto-picks; later refills while a Cure song plays must not go to Abba
+    for _ in range(25):
+        mpd.next()
+        d.last_refill = 0
+        d.on_event(p, {"player"})
+    assert state.anchor(d.con)["artist"] == "Joy Division"
+    assert not any(s["artist"] == "Abba" for s in mpd.q)
+    # a song you add yourself becomes the new anchor
+    abba = next(s for s in LIB if s["artist"] == "Abba")
+    p.insert_next(abba["file"])
+    mpd.next()
+    d.on_event(p, {"player"})
+    assert state.anchor(d.con)["artist"] == "Abba"
+
+
+def test_daemon_restart_mid_song_keeps_anchor(tmp_path):
+    d, mpd, p = make(tmp_path)
+    mpd.add(LIB[0]["file"])
+    mpd.play(0)
+    d.on_event(p, {"player"})
+    mpd.next()                    # an auto-picked song starts
+    d.on_event(p, {"player"})
+    d2 = Daemon(d.cfg)            # daemon restarts while it plays
+    d2.lfm, d2.prefetch = d.lfm, NoPrefetch()
+    d2.on_event(p, {"player"})
+    assert state.anchor(d2.con)["artist"] == "Joy Division"

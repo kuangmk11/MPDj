@@ -141,6 +141,10 @@ def cmd_more(ctx: Ctx, a) -> None:
 
     if a.what in ("artist", "genre", "song") and a.n_given:
         songs = songs[:n]
+    if a.what in ("best", "similar"):
+        # "more like this": this song becomes the auto-DJ's seed, and its picks don't
+        state.set_anchor(ctx.con, cur)
+        state.mark_autoqueued(ctx.con, [s["file"] for s in songs])
     for s in songs:
         p.add(s["file"])
     show_added(songs)
