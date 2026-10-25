@@ -36,3 +36,6 @@ def_key "alt-z"
 ## WSL: choppy or no sound after the screen/PC wakes -> restart WSLg's audio server
 def_key "alt-f"
   run_external_command "wslg-audio-watchdog --restart >/dev/null 2>&1"
+## still choppy after Alt-F -> also restart WSLg's compositor (closes Linux GUI windows)
+def_key "alt-F"
+  run_external_command "wslg-audio-watchdog --full >/dev/null 2>&1"

@@ -54,7 +54,9 @@ file with "Too many levels of symbolic links".
 `failed to connect: Timeout`. `contrib/wslg/wslg-audio-watchdog` checks it every minute and
 restarts only that process (WSLg brings it back), then resumes MPD. Sound that turns
 **choppy** after the screen wakes can't be detected (the server still answers): press Alt-F in
-ncmpcpp or run `wslg-audio-watchdog --restart`.
+ncmpcpp or run `wslg-audio-watchdog --restart`. If it still stutters, press Alt-Shift-F or run
+`wslg-audio-watchdog --full`: that also restarts weston, WSLg's compositor, which carries the
+audio to Windows. It closes any open Linux GUI windows; terminals and MPD keep running.
 
 
 

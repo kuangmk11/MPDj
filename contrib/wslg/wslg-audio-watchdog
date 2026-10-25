@@ -7,6 +7,9 @@ killing just that process brings audio back without restarting WSL.
 
 Run every minute from a systemd user timer. Needs no sudo and no pactl.
 `wslg-audio-watchdog --restart` restarts it now (for choppy sound after the screen wakes).
+`wslg-audio-watchdog --full` also restarts weston, WSLg's compositor, which carries the
+audio to Windows over RDP. Use it when --restart doesn't fix the stutter. It closes any
+open Linux GUI windows; terminals and MPD are not affected.
 """
 import socket
 import struct
@@ -42,9 +45,29 @@ def mpd_audio_error() -> bool:
     return "audio output" in out or "pulse" in out.lower()
 
 
+WSL = "/mnt/c/WINDOWS/system32/wsl.exe"
+
+
+def system_distro(*cmd: str) -> subprocess.CompletedProcess:
+    """Run a command as root in WSLg's system distro. cwd=/mnt/c keeps wsl.exe from
+    complaining about a Linux working directory."""
+    return subprocess.run([WSL, "--system", "-u", "root", "--", *cmd],
+                          capture_output=True, timeout=30, cwd="/mnt/c")
+
+
 def restart_pulse() -> None:
-    subprocess.run(["/mnt/c/WINDOWS/system32/wsl.exe", "--system", "-u", "root", "--", "pkill", "-9", "-x", "pulseaudio"],
-                   capture_output=True, timeout=30)
+    system_distro("pkill", "-9", "-x", "pulseaudio")
+
+
+def restart_weston() -> bool:
+    """Kill weston (WSLGd starts a new one, and the RDP link to Windows with it)."""
+    system_distro("pkill", "-9", "-x", "weston")
+    for _ in range(15):
+        time.sleep(1)
+        if system_distro("pgrep", "-x", "weston").returncode == 0:
+            time.sleep(2)  # let it bring up its RDP audio socket
+            return True
+    return False
 
 
 def mpd_playing() -> bool:
@@ -55,8 +78,15 @@ def mpd_playing() -> bool:
     return "[playing]" in out
 
 
-def main(force: bool = False) -> int:
+def main(force: bool = False, full: bool = False) -> int:
     was_playing = mpd_playing()
+    if full:
+        print("restarting WSLg compositor (weston)", flush=True)
+        subprocess.run(["mpc", "-q", "pause"], timeout=10)
+        if not restart_weston():
+            print("weston did not come back; try `wsl --shutdown` from Windows", flush=True)
+            return 1
+        force = True  # PulseAudio has to reconnect to the new compositor
     if not force:
         if pulse_alive():
             return 0
@@ -74,13 +104,27 @@ def main(force: bool = False) -> int:
     else:
         print("PulseAudio still not answering; try `wsl --shutdown` from Windows", flush=True)
         return 1
-    time.sleep(1)
     if was_playing or mpd_audio_error():  # MPD pauses when its output fails: carry on playing
-        subprocess.run(["mpc", "-q", "play"], timeout=10)
-        print("audio back; resumed MPD", flush=True)
+        if resume_mpd():
+            print("audio back; resumed MPD", flush=True)
+        else:
+            print("audio server is back but MPD can't open it yet; try `mpc play` shortly", flush=True)
+            return 1
     else:
         print("audio back", flush=True)
     return 0
+
+
+def resume_mpd(tries: int = 10) -> bool:
+    """PulseAudio answers before its RDP sink is ready, so MPD's first `play` can fail with
+    'Failed to open audio output' and pause again. Keep trying until it stays playing."""
+    for _ in range(tries):
+        time.sleep(2)
+        subprocess.run(["mpc", "-q", "play"], timeout=10)
+        time.sleep(1)
+        if mpd_playing() and not mpd_audio_error():
+            return True
+    return False
 
 
 if __name__ == "__main__":
@@ -89,4 +133,4 @@ if __name__ == "__main__":
         sys.exit(0)
     # --restart: e.g. choppy sound after the screen wakes. PulseAudio still answers then,
     # so the timer can't tell; restarting it fixes the sound.
-    sys.exit(main(force="--restart" in sys.argv))
+    sys.exit(main(force="--restart" in sys.argv, full="--full" in sys.argv))
