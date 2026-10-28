@@ -1,0 +1,24 @@
+#!/bin/bash
+
+_LIST=$(cat "$*")
+if [ -z "$_LIST" ] ; then
+	echo "no playlist specified"
+	exit
+fi
+#echo "$_LIST"
+
+while read -r _line ; do
+	#echo "$_line"
+	printf +
+	if echo "$_line" | grep -q "^#" ; then
+		printf "#"
+	elif [ -z "$_line" ] ; then
+		printf " "
+	else
+		mpc sticker "$_line" set rating 10 2>&1 > /dev/null
+		if [ $? = 1 ] ; then
+			echo "" && echo "ERROR: $_line"
+		fi
+	fi
+#done < "$*"
+done <<< "$_LIST"

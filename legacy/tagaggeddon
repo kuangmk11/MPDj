@@ -1,0 +1,6 @@
+#!/bin/bash
+for _FILE in *.mp3 ; do
+	/etc/myscripts/mpd/apewipe "$_FILE"
+	/etc/myscripts/mpd/apetag --delete "$_FILE"
+	eyeD3 "$_FILE" --remove-v1 --to-v2.3
+done

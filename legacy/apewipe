@@ -1,0 +1,14 @@
+#! /usr/bin/python
+# -*- encoding: utf-8 -*-
+
+import mutagen
+import mutagen.mp3
+import mutagen.apev2
+
+import sys
+
+for fn in sys.argv[1:]:
+ f = mutagen.File(fn)
+ f.load(fn, ID3=mutagen.apev2.APEv2)
+ f.delete()
+ f.save()

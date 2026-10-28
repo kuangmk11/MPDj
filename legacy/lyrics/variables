@@ -1,0 +1,54 @@
+#!/bin/bash
+echo $(date) - $(basename $0) variables >> /var/log/mpd/mpd-ext.log
+_TRUEARTIST="$(mpc current -f '%artist%')"
+_ARTIST="$(mpc current -f '%artist%' | sed 's|\/|_|' | perl -ne 'print lc')"
+_ALBUM="$(mpc current -f '%album%' | sed 's|\/|_|' | perl -ne 'print lc')"
+_TITLE="$(mpc current -f '%title%' | sed 's|\/|_|' | sed -r 's|\s*\(.+\)||g' | sed -r 's|\s*\[.+\]||g' | perl -ne 'print lc')"
+#_TITLE="$(mpc current -f '%title%' | sed 's|\/|_|' | perl -ne 'print lc')"
+_ARTIST=${_ARTIST//&/and}
+_ARTIST=${_ARTIST//\'/_}
+_ARTIST=${_ARTIST//\"/_}
+_ARTIST=${_ARTIST//\./}
+_ALBUM=${_ALBUM//&/and}
+_ALBUM=${_ALBUM//\'/_}
+_ALBUM=${_ALBUM//\"/_}
+_TITLE=${_TITLE//&/and}
+_TITLE=${_TITLE//\'/_}
+_TITLE=${_TITLE//\"/_}
+_PATH_ARTIST=${_ARTIST//[\?\:\+\=\.\,]}
+_PATH_ALBUM=${_ALBUM//[\?\:\+\=\.,]}
+_PATH_TITLE=${_TITLE//[\?\:\+\=\.\,]}
+_ARTIST=$(echo "$_ARTIST" | sed -r 's/christian death.+/christian death/' | sed -r 's/^warsaw$/joy division/')
+_LYRPATH="/storage/dd1/mp3/_lyrics/$_PATH_ARTIST"
+_SIMPATH="/storage/dd1/mp3/__similar/$_PATH_ARTIST.txt"
+_TOPPATH="/storage/dd1/mp3/__top100/$_PATH_ARTIST.xml"
+_SUGGPATH="/storage/dd1/mp3/__suggestions/$_PATH_ARTIST.txt"
+_IMG_PATH="/storage/dd1/mp3/_lyrics/$_PATH_ARTIST/artist"
+_LYRFILE="/storage/dd1/mp3/_lyrics/$_PATH_ARTIST/$_PATH_ARTIST - $_PATH_TITLE.txt"
+_TABFILE="/storage/dd1/mp3/_tab/$_PATH_ARTIST/$_PATH_ARTIST - $_PATH_TITLE"
+_BTABFILE="/storage/dd1/mp3/_tab/$_PATH_ARTIST/$_PATH_ARTIST - $_PATH_TITLE-BASS"
+_TABPATH="/storage/dd1/mp3/_tab/$_PATH_ARTIST"
+lrc_LYRFILE="/storage/dd1/mp3/_lyrics/$_PATH_ARTIST/$_PATH_ARTIST - $_PATH_TITLE.lrc"
+_file=/tmp/lyrics.tmp
+_API_KEY=REDACTED_LASTFM_API_KEY
+_XML_ARTIST="http://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=$_ARTIST&api_key=$_API_KEY"
+_XML_ALBUM="http://ws.audioscrobbler.com/2.0/?method=album.getinfo&artist=$_ARTIST&album=$_ALBUM&api_key=$_API_KEY"
+#_XML_SIMILAR="http://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=$_ARTIST&api_key=$_API_KEY"
+_XML_SIMILAR="http://ws.audioscrobbler.com/2.0/?method=artist.getsimilar&artist=$_ARTIST&api_key=$_API_KEY"
+_XML_ALBUMCHECK="http://ws.audioscrobbler.com/2.0/?method=artist.getTopAlbums&artist=$_ARTIST&api_key=$_API_KEY&limit=100&autocorrect=1"
+_XML_BEST="http://ws.audioscrobbler.com/2.0/?method=artist.getTopTracks&artist=$_ARTIST&api_key=$_API_KEY"
+_BIO_PATH="$_LYRPATH/_$_PATH_ARTIST.xml"
+_ALB_PATH="$_LYRPATH/_$_PATH_ARTIST - $_PATH_ALBUM.xml"
+
+#http://makeitpersonal.co
+_TPL='http://makeitpersonal.co/lyrics?artist=<artist>&title=<title>'
+_SRY="Sorry, We don't have lyrics for this song yet."
+_URL="${_TPL//"<artist>"/$_ARTIST}"
+_URL="${_URL//"<title>"/$_TITLE}"
+
+##http://lyrics.wikia.com WIKIA TRUNCATES LYRICS
+#_TPL2='http://lyrics.wikia.com/api.php?action=lyrics&fmt=xml&func=getSong&artist=<artist>&song=<title>'
+#_SRY2="Not found"
+#_URL2="${_TPL2//"<artist>"/$_ARTIST}"
+#_URL2="${_URL2//"<title>"/$_TITLE}"
+

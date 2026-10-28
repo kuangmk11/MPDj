@@ -1,0 +1,2 @@
+#!/bin/bash
+ mpc -f "[%artist% - ][%album% - ][%track% - ]%title%]|[%file%]"

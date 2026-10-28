@@ -1,0 +1,26 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+escapeit(){
+sed 's|\[|\\[|g' | sed 's|\]|\\]|g' | sed 's|\.|\\.|g' | sed 's|\$|\\$|g'
+}
+
+
+if [[ $1 = --update ]] ; then
+	cat /tmp/nocover.txt | escapeit > /home/ono/.cleanhouse/nocover.txt
+	exit
+fi
+
+
+IFS=$'\n\b'
+if [[ $1 = --all ]] ; then
+	_LIST=($(cat /tmp/nocover.txt | sort -u))
+else
+	_LIST=($(cat /tmp/nocover.txt | grep -vf /home/ono/.cleanhouse/nocover.txt | sort -u ))
+fi
+
+tally=${#_LIST[@]}
+for i in ${!_LIST[@]} ; do
+	echo "${_LIST[i]} "$red"$tally to go"$reset
+	((tally--))
+	thunar "${_LIST[i]}"
+done

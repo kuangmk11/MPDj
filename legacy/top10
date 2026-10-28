@@ -1,0 +1,55 @@
+#!/bin/bash
+#fetch top 10 from last.fm and queue in mpd
+source /etc/myscripts/colors.sh
+source /etc/myscripts/mpd/lyrics/variables
+
+oldIFS="$IFS"
+IFS='
+'
+
+_BEST=$(wget -qO- "$_XML_BEST&limit=15")
+if echo "$_BEST" | grep -q '<lfm status="ok">'; then
+	echo "parsing Top Tracks"
+        _BEST=$(echo "$_BEST" | xml_grep '//toptracks/track/name' --text_only)
+        echo "$_BEST" > /tmp/best #> "$_BESTPATH"
+        echo "lastfm OK"
+else
+	echo "last fm fail"
+	exit
+fi
+mpc crop
+
+counter=0
+_BEST=$(echo "$_BEST" | sed "/$(mpc current -f %title%)/d")
+while read -r line; do
+	echo "searching $_ARTIST" - "$line"
+		mpc search artist "$_ARTIST" title "$line" | sed "/\[Live\]/d" | grep -i "$line.mp3" | shuf -n 1
+		_ADD=$(mpc search artist "$_ARTIST" title "$line" | sed "/\[Live\]/d" | grep -i "$(echo $line | tr \' _).mp3" | shuf -n 1)
+	#if [ -z "$_ADD" ] ; then
+	#	_ADD=$(mpc search artist "$_ARTIST" | sed "/\[Live\]/d")
+	#	_ADD=$(echo $_ADD | fzf $line
+	#fi
+	if ! grep -q "$_ADD" <<< $(tail /home/ono/.PLAYED) ; then
+		echo "ADDING: $_ADD"
+		mpc add "$_ADD"
+		((counter++))
+	else
+		echo "SKIPPING: $_ADD"
+	fi
+	if [[ $counter -eq 10 ]]; then
+		mpc-playlist
+		exit
+	fi
+done <<< "$_BEST"
+
+#mpc del 11
+#while [ "$?" = "0" ]; do
+#	mpc del 11
+#done
+
+mpc-playlist
+
+
+
+
+

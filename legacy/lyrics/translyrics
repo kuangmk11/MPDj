@@ -1,0 +1,49 @@
+#!/bin/bash
+#requires 'trans' from http://www.soimort.org/translate-shell/
+#trans is google translate for CLI
+source /etc/myscripts/mpd/lyrics/variables
+source /etc/myscripts/colors.sh
+
+if [[ $1 = --remove ]] ; then
+	sed -r -i 's/\|.*$//g' "$_LYRFILE"
+	cat "$_LYRFILE"
+	exit
+fi
+
+translatelyrics(){
+rm /tmp/trans >/dev/null 2>&1
+while read line; do
+	if [[ "$line" = "" ]] ; then
+		line=" "
+	fi
+	transline=$(trans -b "$line")
+	if [[ "$transline" = "$line" ]] ; then
+		echo -e "$line"' ''\t''|''\t' >> /tmp/trans
+	else
+		echo -e "$line"' ''\t''|''\t'"$transline" >> /tmp/trans
+	fi
+done < "$_LYRFILE"
+clear
+cat /tmp/trans | column -ts $'\t' | sed -r 's/^\|//g' | tee "$_LYRFILE"
+rm /tmp/trans >/dev/null 2>&1
+}
+
+
+
+if grep -vq "|" "$_LYRFILE" ; then
+	cp "$_LYRFILE" "$_LYRFILE.orig"
+	translatelyrics
+        echo $yellow
+        read -p "Translation Satisfactory? [Y]es [E]dit [*] deletes." -n 1 -r
+        echo $reset
+        if [[ $REPLY =~ ^[Yy]$ ]] ; then
+        	rm "$_LYRFILE.orig"
+        elif [[ $REPLY =~ ^[Ee]$ ]] ; then
+        	nano "$_LYRFILE"
+		rm "$_LYRFILE.orig"
+        else
+        	rm "$_LYRFILE"
+                mv "$_LYRFILE.orig" "$_LYRFILE"
+        fi
+fi
+

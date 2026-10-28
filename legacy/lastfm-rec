@@ -1,0 +1,88 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+source /etc/myscripts/mpd/lyrics/variables
+rm /tmp/sim.txt > /dev/null 2&>1
+rm /tmp/hav.txt > /dev/null 2&>1
+rm /tmp/suggestions.tmp > /dev/null 2&>1
+rm /tmp/suggestions-nc.tmp > /dev/null 2&>1
+touch /tmp/lastfm.txt
+echo "paste source from http://www.last.fm/home/artists HERE" > /tmp/lastfm.txt
+
+nano /tmp/lastfm.txt
+_SIM=$(cat /tmp/lastfm.txt | grep -i 'href="/music/' | sed 's|^[ \t]*||' | sort -u | sed 's|href="/music/||' | sed 's|+| |g' | sed '/free-music-downloads/d' | sed 's|"$||' | sed 's|\&amp\;|\&|')
+
+echo "generating MPD artist list...."
+_ARTIST_LIST=$(mpc list artist | sort)
+echo "$_ARTIST_LIST" > /tmp/hav.txt
+cat /storage/dd1/mp3/__suggestions/_blacklist.txt >> /tmp/hav.txt
+
+echo "collating...."
+while read -r line; do
+		if ! grep -q "$line" /tmp/hav.txt ; then
+			echo "$green$_HAVE    $line$reset"
+			echo "$_HAVE    $line" >> /tmp/suggestions-nc.tmp
+		else
+			echo "$red$_HAVE    $line$reset"
+		fi
+done <<< "$_SIM"
+echo done
+echo "generating html"
+##########################################################################
+	cat << _EOL_ > /storage/dd1/mp3/__suggestions/_suggested.html
+<!doctype html>
+<html>
+<head>
+    <title>Generated Suggestions</title>
+</head>
+
+<body>
+<p>Generated Suggestions<br>
+</p>
+
+<style type="text/css">
+.tg  {border-collapse:collapse;border-spacing:0;}
+.tg td{font-family:Arial, sans-serif;font-size:14px;padding:10px 5px;border-style:solid;border-width:1px;overflow:hidden;word-break:normal;}
+.tg th{font-family:Arial, sans-serif;font-size:14px;font-weight:normal;padding:10px 5px;border-style:solid;border-width:1px;overflow:hidden;word-break:normal;}
+.tg .tg-l9q5{background-color:#c0c0c0;color:#000000;vertical-align:top}
+</style>
+
+<table class="tg">
+<tr>
+
+<th class="tg-l9q5">###</th>
+<th class="tg-l9q5">Last.fm</th>
+<th class="tg-l9q5">TPB</th>
+<th class="tg-l9q5">RUtracker</th>
+<th class="tg-l9q5">GOOG BL</th>
+
+</tr>
+
+_EOL_
+#########################################################################
+
+_SUG=$(cat /tmp/suggestions-nc.tmp | sort -r)
+
+#### table Data
+while read -r line; do
+	Xline="$line"
+	echo \<tr\> >> /storage/dd1/mp3/__suggestions/_suggested.html
+	echo \<td class\=\"tg-l9q5\"\>NUM\<br\>\<\/td\> >> /storage/dd1/mp3/__suggestions/_suggested.html
+	echo \<td class\=\"tg-l9q5\"\>\<a href\=\"http\:\/\/www.last.fm\/music\/$Xline\" target\=\"_LFM\"\>$Xline\<\/a\>\<br\>\<\/td\> >> /storage/dd1/mp3/__suggestions/_suggested.html
+	echo \<td class\=\"tg-l9q5\"\>\<a href\=\"https\:\/\/thepiratebay.org\/search\/$Xline\/0\/99\/100\" target\=\"_TPB\"\>$Xline\<\/a\>\<br\>\<\/td\> >> /storage/dd1/mp3/__suggestions/_suggested.html
+	echo \<td class\=\"tg-l9q5\"\>\<a href\=\"https\:\/\/rutracker.org\/forum\/tracker.php\?nm\=$Xline\" target\=\"_RUT\"\>$Xline\<\/a\>\<br\>\<\/td\> >> /storage/dd1/mp3/__suggestions/_suggested.html
+	echo \<td class\=\"tg-l9q5\"\>\<a href\=\"https\:\/\/www.google.com\/search\?num\=100\&q\=$Xline\+blogload\" target\=\"_GOOG\"\>$Xline\<\/a\>\<br\>\<\/td\> >> /storage/dd1/mp3/__suggestions/_suggested.html
+	echo \<\/tr\> >> /storage/dd1/mp3/__suggestions/_suggested.html
+	echo "
+" >> /storage/dd1/mp3/__suggestions/_suggested.html
+
+done <<< "$_SUG"
+
+echo \<\/table\> >> /storage/dd1/mp3/__suggestions/_suggested.html
+
+#########################################################################
+	cat << _EOF_ >> /storage/dd1/mp3/__suggestions/_suggested.html
+</body>
+ 
+</html>
+_EOF_
+#########################################################################

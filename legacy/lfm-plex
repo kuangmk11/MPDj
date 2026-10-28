@@ -1,0 +1,107 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+source /etc/myscripts/mpd/lyrics/variables
+#/etc/myscripts/mpd/lyrics/last-fm-bio >> /dev/null
+_PLAY_LEN=$(mpc playlist -f %position% | tail -n1)
+_CUR_POS=$(mpc current -f %position%)
+_PLAY_LEN=$(expr $_PLAY_LEN - $_CUR_POS)
+
+oldIFS="$IFS"
+#xml age limit in seconds: day=86400 week=604800
+_AGE_LIMIT=604800
+_MIN_TRACKS=10
+_ADD_TRACKS=10
+IFS='
+'
+echo $(mpc current -f %file%) >> /home/ono/.PLAYED
+
+#TEST FOR SIM
+if [ -e "$_SIMPATH" ] ; then
+	echo "simpath exists"
+        _XML_SIM_AGE=$(( ((`date +%s`) - (`date -r "$_SIMPATH" +%s`)) ))
+else
+	echo "no simpath file"
+        _XML_SIM_AGE=$(( $_AGE_LIMIT + 1 ))
+fi
+if [ $_XML_SIM_AGE -gt $_AGE_LIMIT ]; then
+        echo "SIM XML is old"
+        _SIM=$(wget -qO- -T 20 "$_XML_SIMILAR")
+        if echo "$_SIM" | grep -q '<lfm status="ok">'; then
+		echo "parsing sim"
+		_SIM=$(echo "$_SIM" | xml_grep '//similarartists/artist/name' --text_only)
+        	echo "$_SIM" > "$_SIMPATH"
+                chmod 777 "$_SIMPATH" >/dev/null 2>&1
+                echo "lastfm SIM ok"
+        else
+                echo "last fm fail (sim)"
+		_SIM=$(cat "$_SIMPATH")
+        fi
+else
+        echo "SIM XML New Enough"
+	_SIM=$(cat "$_SIMPATH")
+        echo "$_SIMPATH"
+fi
+
+#TEST FOR TOP
+if [ -e "$_TOPPATH" ] ; then
+        echo "toppath exists"
+        _XML_TOP_AGE=$(( ((`date +%s`) - (`date -r "$_TOPPATH" +%s`)) ))
+else
+        echo "no toppath file"
+        _XML_TOP_AGE=$(( $_AGE_LIMIT + 1 ))
+fi
+if [ $_XML_TOP_AGE -gt $_AGE_LIMIT ]; then
+        echo "top XML is old"
+        _TOP=$(wget -qO- -T 20 "$_XML_BEST")
+        if echo "$_TOP" | grep -q '<lfm status="ok">'; then
+                echo "$_TOP" > "$_TOPPATH"
+                chmod 777 "$_TOPPATH" >/dev/null 2>&1
+                echo "lastfm TOP ok"
+        else
+                echo "last fm fail (top)"
+        fi
+else
+        echo "TOP XML New Enough"
+fi
+
+#add
+if [[ $1 = -o ]] ; then
+        shift
+	echo "RUNNING IN ONESHOT"
+else
+	if mpc status | grep -q "consume: on" ; then
+		if [[ $_PLAY_LEN -gt $_MIN_TRACKS ]] ; then
+        		echo "enough tracks"
+			/etc/myscripts/mpd/remove_duplicates
+			exit
+		fi
+	else
+		echo "consume off: not adding"
+		#/etc/myscripts/mpd/remove_duplicates
+		exit
+	fi
+fi
+
+index=0
+while read -r line; do
+	((index++))
+	LIST_ARRAY+=($(mpc search artist "$line" | shuf -n 1))
+	if [ $((index%2)) -eq 0 ]; then
+		LIST_ARRAY+=($(mpc search artist "$_ARTIST" | shuf -n 1))
+	fi
+
+done <<< "$_SIM"
+
+_RAND=($(shuf -i 1-${#LIST_ARRAY[@]} -n $_ADD_TRACKS))
+
+for i in ${_RAND[@]}; do
+	if ! grep -q "${LIST_ARRAY[i]}" /home/ono/.PLAYED; then
+		echo "--adding-- ${LIST_ARRAY[i]}"
+		mpc add "${LIST_ARRAY[i]}"
+	fi
+	/etc/myscripts/mpd/remove_duplicates
+done
+
+
+
+

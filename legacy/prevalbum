@@ -1,0 +1,28 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+IFS=$'\t'
+_album=$(mpc current -f "%album%")
+_playlist=$(mpc playlist -f "%position%\t%album%")
+_prevalbum=$(grep "$_album" <<< "$_playlist" | head -n1 | cut -f1)
+(( _prevalbum-- ))
+if [[ $_prevalbum = 0 ]] ; then
+	echo $red"No previous album"$reset
+	exit
+fi
+lastalbum=$(grep "^$_prevalbum\s" <<< "$_playlist" | cut -f2)
+lastalbumpos=$(grep "$lastalbum" <<< "$_playlist" | head -n1 | cut -f1)
+
+if [[ ! -z "$lastalbumpos" ]] ; then
+	mpc -q play $lastalbumpos
+	status=$(mpc status -f "%artist%$reset\t%album%\t%track%\t%title%")
+	statusend=$(tail -n2 <<< "$status")
+	statusbeg=$(head -n1 <<< "$status")
+	stat1=$magenta$(cut -f1 <<< "$statusbeg")$reset
+	stat2=$ltblue$(cut -f2 <<< "$statusbeg")$reset
+	stat3=$red$(cut -f3 <<< "$statusbeg")$reset
+	stat4=$green$(cut -f4 <<< "$statusbeg")$reset
+	echo "$stat1 - $stat2 - $stat3 - $stat4"
+	echo $yellow"$statusend"$reset
+else
+	echo $red"No previous album"$reset
+fi

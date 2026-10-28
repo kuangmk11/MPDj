@@ -1,0 +1,10 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+song=$(mpc current -f %title%)
+if [ -z "$song" ] ; then
+	echo nothing playing
+	exit
+fi
+mpc crop
+song -a "$song"
+

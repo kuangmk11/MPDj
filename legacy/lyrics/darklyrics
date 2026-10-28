@@ -1,0 +1,31 @@
+#!/bin/bash
+#http://www.darklyrics.com/search?q=Blitzkrieg+Who+Takes+the+Fall
+source /etc/myscripts/colors.sh
+
+_SM="http://www.darklyrics.com/search?q="
+if [[ $1 = -p ]] ; then
+        source /etc/myscripts/mpd/lyrics/variables
+        echo "using currently playing track"
+else
+        _ARTIST="$1"
+        _TITLE="$2"
+fi
+
+_ARTIST=${_ARTIST//ü/ue}
+_ARTIST=${_ARTIST//ÿ/y}
+
+_URL="$_SM$_ARTIST $_TITLE"
+_URL=${_URL// /+}
+
+_SEARCH=$(wget -qO- "$_URL"  --user-agent="User-Agent: Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.2.12) Gecko/20101026 Firefox/3.6.12")
+#echo "$_SEARCH" > /tmp/search
+#echo "$_ARTIST - $_TITLE"
+if grep -iq "$_ARTIST - $_TITLE" <<< "$_SEARCH" ; then
+	_URL="http://www.darklyrics.com/"$(grep -i "$_ARTIST - $_TITLE" <<< "$_SEARCH" | sed -r 's|^.+href="||' | sed -r 's|" target=".+$||')
+	_ANCHOR=$(echo "$_URL" | sed -r 's|^.+#([0-9]+)$|\1|')
+	_END=$((_ANCHOR+1))
+	_SEARCH=$(wget -qO- "$_URL" --user-agent="User-Agent: Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.2.12) Gecko/20101026 Firefox/3.6.12")
+	#<a style="" class="" href="http://songmeanings.com/songs/view/3530822107858883335/" title="Winter">Winter</a>                          </td>
+fi
+_SEARCH=$(echo "$_SEARCH" | sed -nr "/<a name=\"$_ANCHOR\">/,\$p" | sed "/<div class=\"thanks\">/q" | sed "/<a name=\"$_END\">/q" | sed "1d" | sed '$d' | html2text 2>/dev/null )
+echo "$_SEARCH"

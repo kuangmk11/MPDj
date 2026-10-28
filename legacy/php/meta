@@ -1,0 +1,51 @@
+#!/bin/bash
+_MPCSTATUS=$(mpc status -f 'ARTIST:%artist%\nALBUM:%album%\nTRACK:%track%\nTITLE:%title%\nFILE:%file%\n')
+#echo -e "$_MPCSTATUS"
+_ARTIST=$(grep 'ARTIST:' <<< "$_MPCSTATUS" | sed 's|ARTIST:||')
+_ALBUM=$(grep 'ALBUM:' <<< "$_MPCSTATUS" | sed 's|ALBUM:||')
+_TRACK=$(grep 'TRACK:' <<< "$_MPCSTATUS" | sed 's|TRACK:||')
+_TITLE=$(grep 'TITLE:' <<< "$_MPCSTATUS" | sed 's|TITLE:||')
+_MPDFILE=$(grep 'FILE:' <<< "$_MPCSTATUS" | sed 's|FILE:||')
+_LYRTITLE=$(echo "$_TITLE" | sed -r 's|\s*\(.+\)||g' | sed -r 's|\s*\[.+\]||g')
+_FILE=$(sed 's|^|/storage/dd1/mp3/|' <<< "$_MPDFILE")
+_FOLDER=$(dirname "$_FILE")
+_ARTFOLDER=$(dirname "$_FOLDER" | sed 's|/storage/dd1/mp3/||')
+_ARTFOLDER2=$(dirname "$_FOLDER")
+_ARTFOLDER2=$(dirname "$_ARTFOLDER2" | sed 's|/storage/dd1/mp3/||')
+_MPDFOLDER=$(sed 's|/storage/dd1/mp3/||' <<< "$_FOLDER")
+_CONSUME=$(grep consume: <<< "$_MPCSTATUS" | cut -c 57-68 | sed -r 's|\s*$||g')
+_VOLUME=$(grep volume:  <<< "$_MPCSTATUS" | cut -c 1-12 | sed -r 's|\s*$||g')
+_REPEAT=$(grep repeat: <<< "$_MPCSTATUS" | cut -c 15-25 | sed -r 's|\s*$||g')
+_RANDOM=$(grep random: <<< "$_MPCSTATUS" | cut -c 29-40 | sed -r 's|\s*$||g')
+_SINGLE=$(grep single: <<< "$_MPCSTATUS" | cut -c 43-55 | sed -r 's|\s*$||g')
+_STATUS=$(grep -E '(playing|paused)' <<< "$_MPCSTATUS" | cut -c1-10)
+_STATUS=${_STATUS//[\[\]]}
+if [ -z $_STATUS ] ; then
+        _STATUS='Stopped'
+fi
+_STATUS=$(sed 's|^|status: |' <<< "$_STATUS")
+_MPDFOLDERSAN=${_MPDFOLDER//\%/%25}
+_MPDFOLDERSAN=${_MPDFOLDERSAN//\;/%3b}
+_MPDFOLDERSAN=${_MPDFOLDERSAN//\@/%40}
+_MPDFOLDERSAN=${_MPDFOLDERSAN//\#/%23}
+_MPDFOLDERSAN=${_MPDFOLDERSAN//\&/%26}
+_MPDFOLDERSAN=${_MPDFOLDERSAN//\!/%21}
+_ARTIST_SAN=${_ARTIST//\?/_}
+_ARTIST_SAN=${_ARTIST_SAN//\:/_}
+_ARTIST_SAN=${_ARTIST_SAN//\'/_}
+_ARTIST_SAN=${_ARTIST_SAN//\"/_}
+_ARTIST_SAN=${_ARTIST_SAN//\./}
+_LYRTITLE=${_LYRTITLE//\?/}
+_LYRTITLE=${_LYRTITLE//\:/_}
+_LYRTITLE=${_LYRTITLE//\'/_}
+_LYRTITLE=${_LYRTITLE//\"/_}
+_LYRTITLE=${_LYRTITLE//\./}
+#_BVOL=$(amixer get Front | tail -n1 | cut -c28-50)
+#_KVOL=$(amixer get Surround | tail -n1 | cut -c28-50)
+#_KVOL=${_KVOL//[\[\]]}
+#_BVOL=${_BVOL//[\[\]]}
+#_WAI=$(whoami)
+#	0	1	2	3	4	5	6           7		8	9	10	  11	  12		13		14	15	16	   17		18	   19
+echo "$_ARTIST|$_ALBUM|$_TRACK|$_TITLE|$_FILE|$_FOLDER|$_MPDFOLDER|$_MPDFILE|$_CONSUME|$_RANDOM|$_REPEAT|$_SINGLE|$_STATUS|$_MPDFOLDERSAN|$_ARTFOLDER|$_WAI|$_ARTIST_SAN|$_ARTFOLDER2|$_LYRTITLE|"
+exit
+

@@ -1,0 +1,19 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+SAVEIFS=$IFS
+IFS=$(echo -en "\n\b")
+rm /tmp/truname-renamer
+echo '#!/bin/bash' > /tmp/truname-renamer
+for _FILE in $(find /storage/dd1/mp3/ -type f -name TRUENAME)
+do
+	_DIR=$(dirname $_FILE)
+	_DIRDIR=$(dirname $_DIR)
+	_TRUENAME=$(cat $_FILE)
+	echo "$_DIR to $_DIRDIR/$_TRUENAME"
+	echo "mv \"$_DIR\" \"$_DIRDIR/$_TRUENAME\"" >> /tmp/truname-renamer
+	sort -u /tmp/truname-renamer -o /tmp/truname-renamer
+	rm "$_FILE"
+done
+echo "script output to /tmp/truname-renamer"
+echo "chmod +x and run as root"
+exit

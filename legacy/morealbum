@@ -1,0 +1,20 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+_mpdfile=$(mpc current -f %file%)
+_file=$(echo "$_mpdfile" | sed 's|^|\/storage\/dd1/mp3\/|')
+_dirname=$(dirname "$_file")
+_mpddirname=$(echo "$_dirname" |  sed 's|\/storage\/dd1/mp3\/||')
+_artist=$(mpc current -f %artist%)
+_title=$(mpc current -f %title%)
+_track=$(mpc current -f %track%)
+if [ -z "$_mpddirname" ] ; then
+	echo nothing playing
+	exit
+fi
+mpc crop
+mpc add "$_mpddirname"
+#mpc del $(mpc playlist -f "%artist% %title% ¥%position%" | grep "$_artist $_title" | head -2 | tail -1 | sed -r "s/.+¥//") &
+mpc del $(mpc playlist -f "%track% ¥%position%" | grep -e "^$_track" | head -2 | tail -1 | sed -r "s/.+¥//")
+mpc-playlist
+mpc-status
+exit

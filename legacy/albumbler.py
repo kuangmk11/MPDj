@@ -1,0 +1,500 @@
+#! /usr/bin/env python2
+
+# Copyright Kyle Keen 2010
+# gpl v2
+
+import subprocess, os, random, time, sys, ConfigParser, socket
+import cPickle as pickle
+
+mpd = False
+try:
+    import mpd
+except ImportError:
+    pass
+    
+
+# defaults
+conf = {
+    'music_paths': [os.getenv('HOME')],
+    'time_window': 60.0,
+    'max_playlist': 1000,
+    'min_playlist': 3,
+    'notify': 'console',
+    'player': 'mocp',
+    'playlist_exts': ['m3u'],
+    'audio_exts': ['mp3','ogg','wav','aiff','aif','m4a','wv','flac','ape']}
+
+"""
+albumlist is a cached list of all directories/playlists/albums.
+
+skiplist is a list of what/when was played
+[ [skipped, skipped, skipped, listened, time], ... ]
+Any delta t less than time_window is considered as skipped.
+
+Albums are strings, but can be (artist, album) tuples for mpd_albums.
+"""
+
+# support for more players
+# support more notifications
+# man page
+# berkely db? sqlite?
+# rewrite in not python?
+# context sensitive?
+# add -forget
+
+class MusicPlayer(object):
+    def resync(self, **kwargs):
+        resync(**kwargs)
+    def filter(self, albumlist):
+        return [a for a in albumlist if type(a) == str]
+    def reasonable(self, album):
+        return reasonable_dir(album)
+    def message(self, album):
+        return 'Now Playing: %s' % os.path.basename(album)
+    def play_tunes(self, album):
+        play_tunes(album)
+        play_bad_tunes(album)
+
+class MpdPlayer(MusicPlayer):
+    def resync(self, **kwargs):
+        albumlist, skiplist = load_cache()
+        old_len = len(albumlist)
+        if kwargs['nuke']:
+            albumlist = []
+        print 'Querying library'
+        albumlist.extend(mpd_library())
+        albumlist = list(set(albumlist))
+        save_cache(albumlist, skiplist)
+        new_len = len(albumlist)
+        print 'Index: added %i, total %i' % (new_len-old_len, new_len)
+    def filter(self, albumlist):
+        return [a for a in albumlist if type(a) == tuple]
+    def reasonable(self, album):
+        return True
+    def message(self, album):
+        return "Now Playing: %s - %s" % album
+    def play_tunes(self, album):
+        mpdc = mpd_init()
+        mpdc.clear()
+        # todo - check if album still exists
+        mpdc.findadd('artist', album[0], 'album', album[1])
+        mpdc.play()
+        mpdc.disconnect()
+
+def xdg_paths():
+    j = os.path.join
+    e = os.getenv
+    config = e('XDG_CONFIG_HOME', j(e('HOME'), '.config'))
+    config = j(config, 'albumbler', 'albumbler.config')
+    cache = e('XDG_DATA_HOME', j(e('HOME'), '.local/share'))
+    cache = j(cache, 'albumbler', 'albumbler.pickle')
+    exclude = e('XDG_CONFIG_HOME', j(e('HOME'), '.config'))
+    exclude = j(exclude, 'albumbler', 'excludes')
+    return config, cache, exclude
+
+# probably dumb to do this globally
+config_path, cache_path, exclude_path = xdg_paths()
+
+def save_cache(albumlist, skiplist):
+    pickle.dump((albumlist, skiplist), open(cache_path, 'wb'), -1)
+
+def call(string):
+    pipe = subprocess.PIPE
+    return subprocess.call(string, stdout=pipe, shell=True)
+
+def port(host, number, message):
+    if type(number) == str:
+        number = int(number)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #sock.setblocking(0)
+    sock.connect((host, number))
+    sock.send(message)
+    reply = sock.recv(16384) # 16k ought to be more than enough for anyone
+    sock.close()
+    return reply
+
+def load_excludes():
+    excludes = set()
+    if not os.path.isfile(exclude_path):
+        return excludes
+    with open(exclude_path) as f:
+        for line in f:
+            excludes.add(line.strip('\n'))
+    return excludes
+
+def justext(name):
+    return os.path.splitext(name)[1][1:]
+
+def dir_tree(dir_root):
+    excludes = load_excludes()
+    tree = list(os.walk(dir_root))
+    dirs = [t[0] for t in tree]
+    playlists = [os.path.join(t[0],f) for t in tree for f in t[2] if justext(f) in conf['playlist_exts']]
+    return [p for p in dirs + playlists if p not in excludes]
+
+def reasonable_dir(path):
+    "Estimates size of recursive add."
+    # forgot to mount the share/drive/dap
+    if not os.path.exists(path):
+        return False
+    # assume any custom playlists are reasonable
+    if not os.path.isdir(path):
+        return True
+    length = 0
+    for p,d,files in os.walk(path):
+        length += sum(justext(f) in conf['audio_exts'] for f in files)
+    return conf['min_playlist'] < length < conf['max_playlist']
+
+def list_files(path):
+    "For spoon feeding some players."
+    j = os.path.join
+    if justext(path) in conf['playlist_exts']:
+        dn = os.path.dirname(path)
+        return [j(dn, track) for track in open(path).read().split('\n')]
+    if not os.path.isdir(path):
+        return ''
+    return [os.path.join(p,f) for p,d,files in os.walk(path) for f in files]
+
+def strip_dirs(track, dirs):
+    if type(track) != str:
+        return track
+    for d in dirs:
+        if not track.startswith(d):
+            continue
+        track = track[len(d):]
+        if track.startswith('/'):
+            track = track[1:]
+        return track
+    return track
+
+def unstrip_dirs(album):
+    "undo relative paths"
+    if type(album) != str:
+        return album
+    for basepath in conf['music_paths']:
+        album2 = os.path.join(basepath, album)
+        if reasonable_dir(album2):
+            return album2
+    return album
+
+def resync(nuke=False, relative=False):
+    albumlist, skiplist = load_cache()
+    old_len = len(albumlist)
+    if nuke:
+        albumlist = []
+    print 'Walking', conf['music_paths']
+    [albumlist.extend(dir_tree(mp)) for mp in conf['music_paths']]
+    if relative:
+        strip = lambda a: strip_dirs(a, conf['music_paths'])
+        albumlist = [strip(a) for a in albumlist]
+        skiplist = [[strip(a) for a in skips]for skips in skiplist]
+    albumlist = list(set(albumlist))
+    save_cache(albumlist, skiplist)
+    new_len = len(albumlist)
+    print 'Index: added %i, total %i' % (new_len-old_len, new_len)
+
+def ranking():
+    albumlist, skiplist = load_cache()
+    fav_list = [skips[-2] for skips in skiplist]
+    bad_list = []
+    [bad_list.extend(skips[:-2]) for skips in skiplist]
+    fav_count = dict((f,0.0) for f in set(fav_list) | set(bad_list))
+    for f in fav_list:
+        fav_count[f] += 1.0
+    for b in bad_list:
+        fav_count[b] -= 0.1
+    fav_tally = [(c,f) for f,c in fav_count.iteritems()]
+    return fav_tally
+
+def show_favorites():
+    fav_tally = ranking()
+    fav_tally.sort()
+    fav_tally.reverse()
+    for c,f in fav_tally[:100]:
+        print f
+
+def show_worst():
+    fav_tally = ranking()
+    fav_tally.sort()
+    for c,f in fav_tally[:100]:
+        print f
+
+def update_skiplist(albumlist, skiplist, album):
+    now_time = time.time()
+    if len(skiplist) == 0:
+        skiplist.append([album, now_time])
+        save_cache(albumlist, skiplist)
+        return
+    last_time = skiplist[-1][-1]
+    if now_time - last_time < conf['time_window']:
+        skiplist[-1].pop() # last_time
+        skiplist[-1].append(album)
+        skiplist[-1].append(now_time)
+    else:
+        skiplist.append([album, now_time])
+    save_cache(albumlist, skiplist)
+
+def load_cache():
+    if not os.path.isdir(os.path.dirname(cache_path)):
+        os.makedirs(os.path.dirname(cache_path))
+    if not os.path.isfile(cache_path):
+        save_cache([], [])
+    return pickle.load(open(cache_path, 'rb'))
+
+def load_config():
+    "sets global 'conf' dictionary"
+    global conf
+    cp = ConfigParser.RawConfigParser()
+    if not os.path.isdir(os.path.dirname(config_path)):
+        os.makedirs(os.path.dirname(config_path))
+    if not os.path.isfile(config_path):
+        # create default file
+        cp.add_section('Settings')
+        cp.set('Settings', 'MusicPaths', ','.join(conf['music_paths']))
+        cp.set('Settings', 'TimeWindow', str(conf['time_window']))
+        cp.set('Settings', 'MaxPlaylist', str(conf['max_playlist']))
+        cp.set('Settings', 'MinPlaylist', str(conf['min_playlist']))
+        cp.set('Settings', 'Notify', str(conf['notify']))
+        cp.set('Settings', 'Player', str(conf['player']))
+        cp.set('Settings', 'PlaylistExts', ','.join(conf['playlist_exts']))
+        cp.set('Settings', 'AudioExts', ','.join(conf['audio_exts']))
+        cp.write(open(config_path, 'wb'))
+    cp = ConfigParser.RawConfigParser()
+    cp.read(config_path)
+    conf['music_paths'] = cp.get('Settings', 'MusicPaths').split(',')
+    conf['time_window'] = cp.getfloat('Settings', 'TimeWindow')
+    conf['max_playlist'] = cp.getint('Settings', 'MaxPlaylist')
+    conf['notify'] = cp.get('Settings', 'Notify')
+    conf['player'] = cp.get('Settings', 'Player')
+    # make a graceful upgrade path
+    try:
+        conf['playlist_exts'] = cp.get('Settings', 'PlaylistExts').split(',')
+    except ConfigParser.NoOptionError:
+        pass
+    try:
+        conf['min_playlist'] = cp.getint('Settings', 'MinPlaylist')
+    except ConfigParser.NoOptionError:
+        pass
+    try:
+        conf['audio_exts'] = cp.get('Settings', 'AudioExts').split(',')
+    except ConfigParser.NoOptionError:
+        pass
+
+def scale_many(d, scale, keys):
+    d.update( (k, d[k]*scale) for k in d if k in keys)
+    return d
+
+def weighted(albumlist, skiplist):
+    albumdict = dict((path, 1.0) for path in albumlist)
+    if len(skiplist) == 0:
+        # first time user
+        return albumdict
+    now_time = time.time()
+    last_time = skiplist[-1][-1]
+    albumdict = time_decay(albumdict, skiplist)
+    if now_time - last_time > conf['time_window']:
+        # start new session, avoid common
+        all_heard = (p for skips in skiplist for p in skips[:-1])
+        albumdict = scale_many(albumdict, 0.25, all_heard)
+        return albumdict
+    # called multiple times, do the fancy stuff
+    recent = set(skiplist[-1][:-1])
+    # no repeats
+    albumdict = scale_many(albumdict, 0, recent)
+    # first order inference
+    multiplies = 0
+    for skips in skiplist[:-1]: # ignore recent
+        skips = set(skips[:-2]) # drop liked and time
+        common = skips & recent
+        overlap = len(list(common))
+        if overlap == 0:
+            continue
+        factor = 0.5 ** overlap
+        albumdict = scale_many(albumdict, factor, skips)
+        multiplies += overlap
+        # need to normalize at least every 1074 to avoid underflow
+        if multiplies > 200:
+            albumdict = normalize(albumdict)
+            multiplies -= 200
+    return albumdict
+
+def time_decay(albumdict, skiplist):
+    "applies a gradual falloff between time_window and 1 hour"
+    tw = conf['time_window']
+    if tw > 3600:
+        return albumdict
+    now_time = time.time()
+    falloff = lambda dt: (dt-tw) * 1.0 / (3600 - tw)
+    for skips in reversed(skiplist):
+        dt = now_time - skips[-1]
+        if dt > 3600:
+            break
+        factor = falloff(dt)
+        factor = max(factor, 0.0)
+        # including the liked track for now, see how that works out
+        albumdict = scale_many(albumdict, factor, skips)
+    albumdict = normalize(albumdict)
+    return albumdict
+        
+def normalize(albumdict):
+    "simple weight functions tend to push everything close to zero"
+    if all(v == 0.0 for v in albumdict.itervalues()):
+        return dict((k,1.0) for k in albumduct)
+    while all(v < 0.5 for v in albumdict.itervalues()):
+        albumdict.update((k,v*2) for k,v in albumdict.iteritems())
+    return albumdict
+
+def emms_quote(path):
+    "backslash every character to make any shell parameter safe"
+    return reduce(lambda a,c: a+'\\'+c, path, "")
+
+def emms_cmd(path):
+    return '''
+(progn
+(require 'emms)
+(save-excursion
+(emms-stop)
+(condition-case nil
+(with-current-buffer emms-playlist-buffer
+(emms-playlist-clear))
+(error nil))
+(emms-add-directory-tree "%s")
+(with-current-buffer emms-playlist-buffer
+(beginning-of-buffer)
+(emms-playlist-mode-play-current-track))))
+''' % path
+
+def mpd_port():
+    "returns (host, port)"
+    host = os.getenv('MPD_HOST', 'localhost')
+    pnum = os.getenv('MPD_PORT', 6600)
+    return host, pnum
+
+def mpd_init():
+    if not mpd:
+        print "Install python MPD library"
+        sys.exit(1)
+    mpdc = mpd.MPDClient()
+    mpdc.connect(*mpd_port())
+    return mpdc
+
+def mpd_library():
+    mpdc = mpd_init()
+    albums = [(ar, al) for ar in mpdc.list('artist') \
+                       for al in mpdc.list('album', 'artist', ar)]
+    mpdc.disconnect()
+    return albums
+
+def play_tunes(album):
+    # player : (command, args, args, ...)
+    f = {'mocp': ('mocp', '--clear', '--append "%s"' % album, '--play'),
+         'cmus': ('cmus-remote', '-c', '"%s"' % album,
+                  '-C "view 3" "win-sel-cur" "win-activate"'),
+         'xmms2': ('nyxmms2', 'remove "*"', 'add "%s"' % album, 'play'),
+         'clementine': ('clementine', '-s', '-l "%s"' % album, '-p'),
+         'gmusicbrowser':('gmusicbrowser', '-play -playlist "%s"' % album),
+         'mpc': ('mpc', 'clear',
+                 'add "%s"\n' % strip_dirs(album, conf['music_paths']),
+                 'play'),
+         'emms': ('emacsclient', '-e %s' % emms_quote(emms_cmd(album))),
+        }
+    player = conf['player']
+    if player not in f:
+        return
+    command = f[player][0]
+    [call('%s %s' % (command, arg)) for arg in f[player][1:]]
+
+def play_bad_tunes(album):
+    "some players don't template well"
+    player = conf['player']
+    if player == 'mpd':
+        host, pnum = mpd_port()
+        port(host, pnum, 'clear\n')
+        port(host, pnum, 'add "%s"\n' % strip_dirs(album, conf['music_paths']))
+        port(host, pnum, 'play\n')
+    if player == 'rhythmbox':
+        call('rhythmbox-client --clear-queue')
+        [call('rhythmbox-client --play-uri="%s"' % track) for track in list_files(album)]
+        call('rhythmbox-client --play')
+    if player == 'audacious':
+        call('audtool --playlist-clear')
+        [call('audtool --playlist-addurl "%s"' % track) for track in list_files(album)]
+        call('audtool --playback-play')
+
+def notify(message):
+    if conf['notify'] == 'console':
+        #print message
+	import subprocess
+	subprocess.call(["mpc-status", ""])
+	print ""
+	subprocess.call(["mpc-playlist", ""])
+    if conf['notify'] == 'notify-send':
+        call('notify-send -a albumbler "%s"' % message)
+    if conf['notify'] == 'ratpoison':
+        call('ratpoison -c "echo %s"' % message)
+
+def dump_cache():
+    albumlist, skiplist = load_cache()
+    print '(['
+    for album in albumlist:
+        print ' %s,' % repr(album)
+    print '],['
+    for skips in skiplist:
+        print ' %s,' % repr(skips)
+    print '])'
+
+def dump_scores(albumdict):
+    print '{'
+    for k,v in albumdict.items():
+        print ' %s: %s,' % (repr(k), repr(v))
+    print '}'
+
+def main():
+    load_config()
+    music_player = MusicPlayer()
+    if conf['player'] == 'mpd_albums':
+        music_player = MpdPlayer()
+    # use real argv parsing
+    if len(sys.argv) > 1:
+        relative = 'relative' in sys.argv
+        nuke = 'hard' in sys.argv
+        if 'sync' in sys.argv:
+            music_player.resync(nuke=nuke, relative=relative)
+        elif 'best' in sys.argv:
+            show_favorites()
+        elif 'worst' in sys.argv:
+            show_worst()
+        elif 'dump' in sys.argv:
+            dump_cache()
+        else:
+            print "Supported options are 'sync', 'best' or 'worst'."
+            print "Also 'hard sync', 'relative sync' and 'relative hard sync'."
+            print "Note that 'hard' (clears old database) and 'relative' "
+            print "(use relative paths) are destructive."
+            print "\nFor normal use, call without any options.\n"
+        return
+    albumlist, skiplist = load_cache()
+    albumlist = music_player.filter(albumlist)
+    if not albumlist:
+        print 'Set musicpath in %s' % config_path
+        print 'And run "albumbler sync"'
+        return
+    albumdict = weighted(albumlist, skiplist)
+    albumdict = normalize(albumdict)
+    while True:
+        album = random.choice(albumdict.keys())
+        odds = albumdict[album]
+        absolute_album = unstrip_dirs(album)
+        if not music_player.reasonable(absolute_album):
+            albumdict[album] = 0.0
+            continue
+        if random.random() < odds:
+            break
+    
+    update_skiplist(albumlist, skiplist, album)
+    #notify(music_player.message(album))
+    music_player.play_tunes(absolute_album)
+    notify(music_player.message(album))
+
+if __name__ == '__main__':
+    main()

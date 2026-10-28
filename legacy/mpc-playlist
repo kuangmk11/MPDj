@@ -1,0 +1,22 @@
+#!/bin/bash
+
+if [[ $1 = -s ]]; then
+source /etc/myscripts/colors.sh
+shift
+echo $gray$dim$so0ul1
+mpc playlist -f "%position%>¥%artist%¥%title%¥%album%¥%track%|[%file%])"| sed "1iPOS-¥ARTIST-¥TITLE-¥ALBUM-¥##-$reset$ltblue\\" | column -t -s ¥
+#mpc playlist -f "[[%position%) ][%artist% - ]%title%[ ALBUM:%album%][ TRACK:%track%]|[%file%])"
+echo $reset
+exit
+fi
+
+if [[ $1 = -w ]]; then
+shift
+mpc playlist -f "%position%>¥%artist%¥%title%¥%album%¥%track%|[%file%])"| sed "1iPOS-¥ARTIST-¥TITLE-¥ALBUM-¥##-\\" | column -t -s ¥
+exit
+fi
+
+source /etc/myscripts/colors.sh
+echo $white$so0ul1
+mpc playlist -f "%position%>¥%artist%¥%album%¥%track%¥%title%|[%file%]" | sed "1iPOS-¥ARTIST-¥ALBUM-¥##-¥TITLE-$reset$gray\\" | column -t -s ¥
+echo $reset

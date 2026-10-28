@@ -1,0 +1,11 @@
+#!/bin/bash
+clear
+img2txt -W "$(tput cols)" "$(dirname "$(mpc status -f %file% | head -n1 |sed 's|^|/storage/dd1/mp3/|')")"/folder.jpg
+while mpc | grep -q "playing" ; do
+	mpc current --wait
+	clear
+	img2txt -W "$(tput cols)" "$(dirname "$(mpc status -f %file% | head -n1 |sed 's|^|/storage/dd1/mp3/|')")"/folder.jpg
+	mpc current
+	sleep 5
+done
+

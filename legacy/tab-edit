@@ -1,0 +1,11 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+clear
+
+_DARTIST="$(mpc current -f '%artist%')"
+_DTITLE="$(mpc current -f '%title%')"
+_ARTIST=${_DARTIST//[-+=.,]}
+_TITLE=${_DTITLE//[-+=.,]}
+FILENAME="/storage/dd1/mp3/_tab/$_ARTIST/$_ARTIST - $_TITLE.txt"
+nano "$FILENAME"
+

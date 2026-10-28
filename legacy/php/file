@@ -1,0 +1,5 @@
+#!/bin/bash
+_FILE=$(mpc status -f %file% | head -n1 | sed -r 's|^|/storage/dd1/mp3/|')
+echo $_FILE
+exit
+

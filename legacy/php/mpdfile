@@ -1,0 +1,4 @@
+#!/bin/bash
+mpc status -f %file% | head -n1)
+exit
+

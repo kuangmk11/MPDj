@@ -1,0 +1,12 @@
+#!/bin/sh
+source /etc/myscripts/colors.sh
+status=$(mpc status)
+service mpd restart
+mpc load current.mpd
+case "$status" in
+        error: Connection closed by the server)
+	echo "MPD flaking out.  Attempting to restart..."
+        sudo mpdrestart
+        ;;
+esac
+

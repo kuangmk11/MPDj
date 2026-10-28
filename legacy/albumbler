@@ -1,0 +1,32 @@
+#!/bin/bash
+#killall espeak >/dev/null 2>&1
+#killall aplay >/dev/null 2>&1
+#killall speak >/dev/null 2>&1
+killall flite >/dev/null 2>&1
+mpc random 0x
+
+if [[ $1 = -g ]] ; then
+	shift
+	genre -q "$*" ; mpc shuffle ; mpc next ; morealbum
+elif [[ $1 = -a ]] ; then
+        shift
+	song=$(cat /home/ono/mp3.list  | shuf -n 1 | sed 's|/storage/dd1/mp3/||g')
+	#mpc add "$song"
+	echo "$song" | mpc insert && mpc next
+	echo "$song"
+	morealbum
+else
+
+	/etc/myscripts/mpd/albumbler.py
+fi
+
+if [[ $1 = -q ]] ; then
+	shift
+	exit
+fi
+
+#espeak -g 10 -s 160 -a 90 "$(mpc current -f %album%) by $(mpc current -f %artist%)" --stdout | aplay -D 'default' >/dev/null 2>&1 &
+#espeak -v mb-en1 -g 10 -s 160 -a 90 "$(mpc current -f %album%) by $(mpc current -f %artist%)" --stdout 2>/dev/null | aplay -D 'default' 2> /dev/null
+#espeak -v mb-en1 -k20 -g 0 -s 110 -a 90 "$(mpc current -f %album%) by $(mpc current -f %artist%)" --stdout 2>/dev/null | aplay -D 'default' 2> /dev/null
+mpc-fade 50 1
+speak "$(mpc current -f %album%) by $(mpc current -f %artist%)" 120 && mpc-fade 100 1 &

@@ -1,0 +1,26 @@
+#!/bin/bash
+#http://www.songlyrics.com/skeletal-family/don-t-be-denied-lyrics/
+source /etc/myscripts/colors.sh
+_SL="http://www.songlyrics.com/"
+if [[ $1 = -p ]] ; then
+        source /etc/myscripts/mpd/lyrics/variables
+        echo $green"using currently playing track"$reset
+	echo
+else
+        _ARTIST="$1"
+        _TITLE="$2"
+fi
+
+_ARTIST=${_ARTIST//ü/ue}
+_ARTIST=${_ARTIST//ÿ/y}
+
+_URL="$_SL$_ARTIST/$_TITLE-lyrics/"
+_URL=${_URL// /-}
+_URL=${_URL//_/-}
+
+_SEARCH=$(wget -qO- --user-agent="User-Agent: Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.2.12) Gecko/20101026 Firefox/3.6.12" "$_URL")
+_SEARCH=$(echo "$_SEARCH" | sed -nr "/songLyricsDiv-outer/,\$p" | sed '/script  type=\"text\/javascript\"/q' | sed -r 's|^\s+||g' | html2text 2>/dev/null | sed '/./,$!d' | recode html..utf8)
+if grep -q 'We do not have the lyrics for ' <<< "$_SEARCH" ; then
+	_SEARCH=""
+fi
+echo "$_SEARCH"

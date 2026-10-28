@@ -1,0 +1,55 @@
+#!/bin/sh
+#....
+# Make sure only root can run our script
+source /etc/myscripts/colors.sh
+if [ "$(id -u)" != "0" ]; then
+   echo "This script must be run as root"
+   exit 1
+fi
+
+echo "Restarting MPD...."
+mpc status > /tmp/mpcstatus
+playing=$( grep "\[playing\]" /tmp/mpcstatus )
+#status=$(cat /tmp/mpcstatus | grep "\[playing\]")
+#statusp=$(cat /tmp/mpcstatus | grep "\[paused\]")
+paused=$( grep "\[paused\]" /tmp/mpcstatus )
+options=$( grep "consume:" /tmp/mpcstatus )
+play_pos=$(mpc -f "%position%" | (head -n1))
+rm /storage/dd1/mp3/_PLAYLISTS/linux/current.mpd.m3u
+mpc save --wait current.mpd
+service mpd restart
+mpc load current.mpd
+case "$playing" in
+        *playing*)
+        mpc play "$play_pos" >> /dev/null
+        ;;
+esac
+case "$paused" in
+        *paused*)
+        mpc play "$play_pos" >> /dev/null
+        mpc pause >> /dev/null
+        ;;
+esac
+case "$options" in
+        *"consume: on"*)
+        mpc consume >> /dev/null
+        ;;
+esac
+case "$options" in
+        *"repeat: on"*)
+        mpc repeat >> /dev/null
+        ;;
+esac
+case "$options" in
+        *"random: on"*)
+        mpc random >> /dev/null
+        ;;
+esac
+case "$options" in
+        *"single: on"*)
+        mpc single >> /dev/null
+        ;;
+esac
+
+
+rm /tmp/mpcstatus

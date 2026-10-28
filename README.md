@@ -4,6 +4,56 @@ MPD DJ: a rewrite of the old `/etc/myscripts/mpd` bash scripts as one Python too
 SQLite database. Put anything on and it keeps the queue going with similar music; one-key
 macros for "more of this"; ratings, bans, lyrics, and a discovery report.
 
+The original scripts are in [`legacy/`](legacy/), with a table of what replaced each one.
+
+## Quick start
+
+```bash
+git clone <this repo> ~/src/mpdj && cd ~/src/mpdj
+./install.sh --music-dir ~/Music --lastfm-key KEY --lastfm-user NAME
+mpdj artist "joy division"        # play something; the daemon keeps the queue going
+```
+
+You need Ubuntu or Debian with systemd. Get a free Last.fm API key at
+<https://www.last.fm/api/account/create>. Without one, the auto-queue falls back to the same
+genre.
+
+## Everyday use
+
+```bash
+mpdj status                 # what's playing, its rating, what's next
+mpdj more similar           # swap the upcoming songs for similar artists
+mpdj more album             # the rest of this album
+mpdj rate 5                 # love it (also loves it on Last.fm after `mpdj lastfm-login`)
+mpdj rate 1                 # never again: ban the song and skip
+mpdj ban artist             # ban the whole artist and skip; `mpdj unban` undoes it
+mpdj lyrics                 # lyrics for the current song
+ncmpcpp                     # the same actions on Alt+key, see contrib/ncmpcpp/bindings
+```
+
+Check that the services are running with `systemctl --user status mpd mpdj`. Logs:
+`journalctl --user -u mpdj -f`. Run `mpc update` after adding music.
+
+## What's in this repo
+
+| Path | What it is |
+|---|---|
+| `mpdj/` | the Python package (`cli.py` commands, `daemon.py`, `autoqueue.py`, `db.py`, …) |
+| `install.sh` | sets up MPD, mpdj, ncmpcpp, scrobbling and the services on a new machine |
+| `contrib/` | config files and systemd units that `install.sh` copies into place |
+| `tests/` | `uv run pytest` (uses a fake MPD) |
+| `legacy/` | the original 2014–2022 scripts, for reference only |
+
+Files mpdj creates on your machine:
+
+| Path | What it is |
+|---|---|
+| `~/.local/bin/mpdj` | the command (an editable install: `git pull` updates it) |
+| `~/.config/mpdj/config.toml` | settings: Last.fm key, music folder, auto-queue numbers |
+| `~/.local/share/mpdj/mpdj.db` | ratings, bans, play history, lyrics, Last.fm cache |
+| `~/.config/systemd/user/mpdj.service` | runs `mpdj daemon` |
+| `~/.config/mpd/` | MPD's config, database, queue state and playlists |
+
 ## Install on another machine
 
 Ubuntu/Debian with systemd (on WSL: `[boot] systemd=true` in `/etc/wsl.conf`). Get this repo

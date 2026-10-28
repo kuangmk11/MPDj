@@ -1,0 +1,8 @@
+#!/bin/bash
+if [[ $(mpc status | grep \\[playing\\]) ]] ; then
+	mpc pause
+	aplay /etc/myscripts/sounds/doorbell-2.wav -d 3 -D mpd 2>&1
+	mpc play
+else
+	aplay /etc/myscripts/sounds/doorbell-2.wav -d 3 -D mpd 2>&1
+fi

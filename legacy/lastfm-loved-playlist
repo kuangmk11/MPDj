@@ -1,0 +1,10 @@
+#!/bin/bash
+IFS="
+"
+rm /storage/dd1/mp3/_loved/* > /dev/null 2>&1
+touch /storage/dd1/mp3/_loved/.mpdignore
+for line in $(cat /storage/dd1/mp3/_PLAYLISTS/linux/loved-master.lin.m3u) ; do
+        ln -s "/storage/dd1/mp3/$line" /storage/dd1/mp3/_loved/ > /dev/null 2>&1
+done
+
+

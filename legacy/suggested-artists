@@ -1,0 +1,56 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+source /etc/myscripts/mpd/lyrics/variables
+
+rm /tmp/sim.txt > /dev/null 2&>1
+rm /tmp/NEW.txt > /dev/null 2&>1
+rm /tmp/hav.txt > /dev/null 2&>1
+
+
+#Get list of artists in MPD database
+echo "generating MPD artist list...."
+_ARTIST_LIST=$(mpc list artist | sort)
+echo "$_ARTIST_LIST" > /tmp/hav.txt
+
+#Get list from /storage/dd1/mp3/__similar
+echo "generating similar artist list..."
+rm /tmp/sim.txt > /dev/null 2&>1
+for f in /storage/dd1/mp3/__similar/*.txt; do
+	cat "$f" >> /tmp/sim.txt
+done
+
+_SIMILAR_LIST=$(cat /tmp/sim.txt | sort | uniq -cd | sort -nr)
+#_SIMILAR_LIST=$(cat /tmp/sim.txt | sort)
+#rm /tmp/sim.txt > /dev/null 2&>1
+#echo "$_SIMILAR_LIST"
+
+
+
+#comm -23 <(echo "$_SIMILAR_LIST") <(echo "$_ARTIST_LIST") | sort | uniq -cd | sort -nr > /storage/dd1/mp3/__suggestions/_suggestions.txt
+
+echo "collating...."
+while read -r line; do
+#	echo $line
+	xline=$(echo $line | cut -c4-)
+	if ! grep -iq "$xline" /tmp/hav.txt ; then
+		echo "$line" >> /tmp/NEW.txt
+	fi
+	
+done <<< "$_SIMILAR_LIST"
+nano /tmp/NEW.txt
+
+while read -r line; do
+        _HAVE=$(mpc search artist "$line" | wc -l )
+        _HAVE=$(printf "%03d" "$_HAVE")
+        echo "$_HAVE    $line" >> /tmp/suggestions-nc.tmp
+        if [ $_HAVE -lt 1 ]; then
+                echo "$_HAVE    $line" >> /tmp/suggestions.tmp
+        elif [ $_HAVE -lt 10 ]; then
+                echo "$_HAVE    $red$line$reset" >> /tmp/suggestions.tmp
+        elif [ $_HAVE -lt 20 ]; then
+                echo "$_HAVE    $yellow$line$reset" >> /tmp/suggestions.tmp
+        elif [ $_HAVE -gt 20 ]; then
+                echo "$_HAVE    $green$line$reset" >> /tmp/suggestions.tmp
+        fi
+done <<< "$_SIM"
+

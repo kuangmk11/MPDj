@@ -1,0 +1,6 @@
+#!/bin/bash
+nano /tmp/lastfm.txt
+_LIST=$(cat /tmp/lastfm.txt | grep -i 'href="/music/' | sed 's|^[ \t]*||' | sort -u | sed 's|href="/music/||' | sed 's|+| |g' | sed '/free-music-downloads/d' | sed 's|"$||')
+
+
+

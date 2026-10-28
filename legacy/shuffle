@@ -1,0 +1,8 @@
+#!/bin/bash
+mpc rm current
+mpc save current
+cat /storage/dd1/mp3/_PLAYLISTS/linux/current.m3u | shuf > /storage/dd1/mp3/_PLAYLISTS/linux/tmp.m3u
+mpc rm current
+mv /storage/dd1/mp3/_PLAYLISTS/linux/tmp.m3u /storage/dd1/mp3/_PLAYLISTS/linux/current.m3u
+mpc crop
+mpc load current

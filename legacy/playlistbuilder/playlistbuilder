@@ -1,0 +1,164 @@
+#!/usr/bin/env ruby
+
+# required gems: scrobbler, librmpd
+
+# Licence: GNU GPLv2
+# Author: jonas@fs.ei.tum.de
+
+## ABOUT PLAYLISTBUILDER
+# http://mpd.wikia.com/wiki/Client:Playlistbuilder
+#
+# Get the artist of the current song, look up some similar artists,
+# search your mpd-music for these artists and add 10 random songs of them to the playlist
+#
+# playlistbuilder
+#
+# Look up your music for artists similar to the Arctic Monkeys and the Kaiser Chiefs
+# and add 5 similar songs each
+#
+# playlistbuilder -i 5 "arctic monkeys" "kaiser chiefs"
+#
+# Use the -p (--pretend) switch to do all but the actual appending.
+# Use the -m (--match) to give an other match-level
+# (default 90, lower means the artist is less similar but you may got more matches within your music).
+# Use -s (--silent) to supress non-error output.
+# With -n (--no-mpd) you can disable the MPD-interaction and only see the list of similar artists.
+
+## INSTALLATION
+# wget https://trac.fs.ei.tum.de/musik/browser/mpd/playlistbuilder/playlistbuil...
+#
+# wget http://rubyforge.org/frs/download.php/15722/librmpd-0.1.1.gem
+# sudo gem install librmpd-0.1.1.gm
+#
+# sudo gem install scrobbler
+#
+
+require "rubygems"
+require "scrobbler"
+require "librmpd"
+
+class Array
+def random
+# implement a sort of random-choice
+self[rand(self.length)]
+end
+end
+
+class MPD
+def self.new_connection
+host = 'localhost'
+port = 6600
+mpd = self.new host, port
+try = 0
+begin
+puts "connecting to #{host}:#{port}..." if $options.verbose
+mpd.connect
+rescue RuntimeError
+try += 1
+unless try > 3
+$stderr.puts "connection failed on #{try}. attempt, retrying..."
+retry
+else
+$stderr.puts "unable to connect"
+exit 1
+end
+end
+return mpd
+end
+end #class MPD
+
+class Options
+attr_reader :verbose, :use_mpd, :pretend, :match, :items, :artists
+def initialize args
+@verbose = true
+@use_mpd = true
+@pretend = false
+@match = 50
+@items = 20
+@artists = []
+until args.empty?
+t = args.shift
+@verbose = false if t == "-s" or t == "--silent"
+@use_mpd = false if t == "-n" or t == "--no-mpd"
+@pretend = true if t == "-p" or t == "--pretend"
+@match = args.shift.to_i if t == "-m" or t == "--match"
+@items = args.shift.to_i if t == "-i" or t == "--items"
+@artists.push t unless t[0].chr == "-"
+if t == "-h" or t == "--help" or t == "-?"
+puts "some help would be realy nice..."
+exit 0
+end #help
+end
+end
+end #class Options
+
+$options = Options.new ARGV
+#puts $options.to_yaml
+
+mpd = MPD.new_connection if $options.use_mpd
+
+if $options.artists.empty? and mpd
+song = mpd.current_song
+
+unless song
+$stderr.puts "currently not playing, please give an artist as argument"
+exit 1
+end
+
+#puts "#{song.artist} - #{song.title}"
+$options.artists.push song.artist
+end
+
+$options.artists.each do |artist_name | # quick and dirty :-/
+artist = Scrobbler::Artist.new artist_name
+
+# getting similar artists can take a little time
+similar = artist.similar.select {|a| a.match.to_f > $options.match}
+similar_artists = similar.collect {|a| a.name}
+
+if $options.verbose
+puts "Similar Artists for #{artist_name}:"
+puts similar_artists
+end
+
+# continues with the next artist if no mpd invocation is planed
+next unless $options.use_mpd
+
+# reconnect if we lost meanwhile the connection
+mpd.connect unless mpd.connected?
+
+songs_by_artist = Hash.new
+
+similar_artists.each do |a|
+songs = mpd.find "artist", a
+songs_by_artist[a] = songs unless songs.empty?
+end
+
+#puts songs_by_artist.to_yaml
+
+if songs_by_artist.empty?
+puts "no similar artists found in your music-db"
+exit 0
+end
+
+songs_to_add = Array.new
+# we have to get a new artist array because it can happen
+# that no songs a found for a similar_artist
+artists = songs_by_artist.keys
+
+$options.items.times do
+artist = artists.random
+song = songs_by_artist[artist].random
+songs_to_add.push song
+end
+
+#puts songs_to_add.to_yaml
+
+# reconnect if we lost meanwhile the connection
+mpd.connect unless mpd.connected?
+
+songs_to_add.each do |song|
+puts "adding #{song.artist} - #{song.title}" if $options.verbose
+mpd.add song.file unless $options.pretend
+end
+end # each artist

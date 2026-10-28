@@ -1,0 +1,4 @@
+#!/bin/bash
+mpc status | grep consume: | cut -c 57-68
+exit
+

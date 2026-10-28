@@ -1,0 +1,37 @@
+#!/bin/bash
+#_DIR="/tmp/playlists/"
+_DIR="/storage/dd1/mp3/_PLAYLISTS/linux/"
+
+
+
+if [ "$1" = -f ] ; then
+	shift
+	_LIST="$1"
+else
+	_LIST=$(find "$_DIR" -type f -iname "*.m3u")
+fi
+
+while read -r lline ; do
+	rm "$lline.fix" > /dev/null
+	_PLAYLIST=$(cat "$lline")
+	printf "\n$lline	"
+	while read -r pline ; do
+		sline=$(printf '%q' "$pline")
+		 if echo "$pline" | grep -q "^#" ; then
+                        printf "c"
+                        echo "$pline" >> "$lline.fix"
+                elif [ -z "$pline" ] ; then
+                        echo "$pline" >> "$lline.fix"
+                else
+			TEST=$(ls "/storage/dd1/mp3/$pline" 2>&1 > /dev/null ; echo $?)
+                        if [[ $TEST = 0 ]] ; then
+				printf "+"
+
+			else
+				printf "-"
+				echo "/storage/dd1/mp3/$sline"
+			fi
+		fi
+	done <<< "$_PLAYLIST"
+done <<< "$_LIST"
+echo ""

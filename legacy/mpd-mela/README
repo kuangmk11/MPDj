@@ -1,0 +1,37 @@
+== WTF IS THIS? ==
+
+MPD-Mela stand for "Mpd Enhanced with LAst.fm".
+
+This little thing will create a set of useful playlists, using your MPD server and your Last.fm account.
+
+Playlists created without the need to have a Last.fm account:
+
+* all-tracks: all tracks in your MPD music directory
+* tracks-y-added-last-2-years: tracks added in your directory since the last 2 years
+* (same thing for last year, last 6 months, last 3 months, last 30 days and last 15 days)
+
+Playlists created with the need of a last.fm account:
+
+* lastfm-loved-tracks: tracks marked as "loved" in your last.fm
+* lastfm-favorite-tracks: all the tracks from your last.fm library, sorted by popularity
+* lastfm-rare-tracks: reverse list of tracks from your library (reverse popularity)
+* lastfm-unknow-tracks: tracks which are in your MPD music directory but not in your last.fm library (usually that's tracks with bad tags or no tags)
+
+
+== HOW TO USE IT ==
+
+Just download this, edit config.php to meet your configuration (I don't think you will have to change the last.fm api key though), change your music dir, your playlist dir, your last.fm username, and your MPD host and port.
+
+Then run this command:
+
+  $ php auto_make_playlists.php
+
+It will take a couple of minutes to generate all the playlists, depending on the number
+of files in your music directory and your last.fm library.
+
+I suggest you to make a cron of this, so that the playlists will be automatically generated
+every day.
+
+== CREDITS ==
+
+MPD-Mela is (C) 2009-2013 BohwaZ, http://bohwaz.net/ is licensed under the GNU/GPL version 3 (only).

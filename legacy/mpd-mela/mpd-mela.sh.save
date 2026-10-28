@@ -1,0 +1,3 @@
+#!/bin/bash
+php auto_make-playlists.php
+sed -i "s|J/Joy Division/1979 - Here Are the Young Men (bootleg)/Joy Division - here are the young men (bootleg) - 01 - transmission (l1988 - Substance/Joy Division - Substance - 05 - Transmission.mp3|" 

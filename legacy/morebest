@@ -1,0 +1,59 @@
+#!/bin/bash
+#fetch best songs from last.fm and queue in mpd
+source /etc/myscripts/colors.sh
+source /etc/myscripts/mpd/lyrics/variables
+
+oldIFS="$IFS"
+IFS='
+'
+if ! mpc status | grep -q playing ; then
+	echo nothing playing
+	exit
+fi
+
+if [[ ! $1 ]] ; then
+	_ADD_TRACKS=10
+else
+	_ADD_TRACKS=$1
+fi
+echo $_XML_BEST
+
+
+#TEST SIM
+_BEST=$(wget -qO- "$_XML_BEST&limit=25")
+if echo "$_BEST" | grep -q '<lfm status="ok">'; then
+	echo "parsing Top Tracks"
+        _BEST=$(echo "$_BEST" | xml_grep '//toptracks/track/name' --text_only)
+        echo "$red$_BEST$reset" #> "$_BESTPATH"
+        echo "lastfm SIM ok"
+else
+	echo "last fm fail"
+	exit
+fi
+
+while read -r line; do
+	echo "searching $_ARTIST" -  "$line"
+	LIST_ARRAY+=($(mpc search artist "$_ARTIST" title "$line" | shuf -n 1))
+done <<< "$_BEST"
+
+
+_RAND=($(shuf -i 1-${#LIST_ARRAY[@]} -n $_ADD_TRACKS))
+
+mpc crop
+
+for i in ${_RAND[@]}; do
+        #if ! grep -q "${LIST_ARRAY[i]}" /home/ono/.PLAYED; then
+                echo "adding ${LIST_ARRAY[i]}"
+		if ! [ -z "${LIST_ARRAY[i]}" ] ; then
+	                mpc add "${LIST_ARRAY[i]}"
+		fi
+
+        #fi
+done
+
+mpc-playlist
+
+
+
+
+

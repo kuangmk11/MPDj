@@ -1,0 +1,86 @@
+#!/bin/bash
+# Make sure only root can run our script
+if [ "$(id -u)" != "0" ]; then
+   echo "This script must be run as root" 1>&2
+   exit 1
+fi
+# ...
+source /etc/myscripts/colors.sh
+
+##clear temps
+echo "$red>  Removing Old tmp file... $reset"
+rm /tmp/mpdupdate > /dev/null 2>&1
+rm /tmp/mpdkim > /dev/null 2>&1 
+
+##rotate logs
+echo "$green>  Rotate MPD Logs.... $reset"
+logrotate --force /etc/logrotate.d/mpd
+sleep 5
+
+##run the update
+#if [ ! -z "$*" ] ; then
+#	_DIR=$(echo "$*" | sed 's|/storage/dd1/mp3/||')
+#	echo "$yellow>  Running MPD update $_DIR ...Please Wait... $reset"
+#        mpc update "$_DIR" --wait
+#else
+	echo "$yellow>  Running MPD update... Please Wait... $reset"
+	mpc update --wait
+#fi
+#process
+echo "$blue>  cat mpd.log $reset"
+cat /var/log/mpd/mpd.log | grep "update: added" > /tmp/mpdupdate
+echo "$magenta>  Processing text... $reset"
+sed -i -r 's|^.+update..added.|/storage/dd1/mp3/|' /tmp/mpdupdate
+echo "$cyan>  Sorting... $reset"
+sort /tmp/mpdupdate -o /tmp/mpdupdate
+
+##deal with kims stuff
+grep -e "^_Kims" /tmp/mpdupdate > /tmp/mpdkim
+if [[ -s /tmp/mpdkim ]] ; then
+	echo ">>> Kim has new songs"
+	mail -s "[gargoyle2] You have new music - $datetime"  REDACTED@example.com REDACTED@example.com < /tmp/mpdkim
+	else
+	echo ">  Kim has no new songs"
+fi ;
+rm /tmp/mpdkim
+
+##write new playlists
+datetime=$(date +"%Y-%m-%d_%H.%M.%S")
+echo "$white>  cp new playlist to /storage/dd1/mp3/_PLAYLISTS/linux/NEW_$datetime.m3u $reset"
+sed -i '/^_Kims\//d' /tmp/mpdupdate
+sed -i '/^_Alice\//d' /tmp/mpdupdate
+sed -i '/^_Audio Book\//d' /tmp/mpdupdate
+
+cp /tmp/mpdupdate /storage/dd1/mp3/_PLAYLISTS/linux/NEW_$datetime.m3u
+ln -sf /storage/dd1/mp3/_PLAYLISTS/linux/NEW_$datetime.m3u /storage/dd1/mp3/_PLAYLISTS/linux/LATEST.m3u
+
+echo "$red>  create windows playlist $reset"
+sed -i -r 's|\/storage\/dd1\/mp3|W:\\mp3|' /tmp/mpdupdate
+sed -i 's/\//\\/g' /tmp/mpdupdate
+echo ">  cp new playlist to /storage/dd1/mp3/_PLAYLISTS/windows/NEW_$datetime.m3u $reset"
+cp /tmp/mpdupdate /storage/dd1/mp3/_PLAYLISTS/windows/NEW_$datetime.m3u
+ln -sf /storage/dd1/mp3/_PLAYLISTS/windows/NEW_$datetime.m3u /storage/dd1/mp3/_PLAYLISTS/windows/LATEST.m3u
+
+##clean temps
+echo "$green>  removing tmp $reset"
+rm /tmp/mpdupdate
+rm /tmp/mpdkim > /dev/null 2>&1
+
+##set perms
+echo "$yellow>  set perms $reset"
+chmod 0777 /storage/dd1/mp3/_PLAYLISTS/*
+chown ono:users /storage/dd1/mp3/_PLAYLISTS/*
+
+##add playlists to mpd
+echo "$blue>  update playlists  $reset"
+mpc update _PLAYLISTS
+
+##load new playlist and play
+echo "$magenta>  load new playlist  $reset"
+mpc crop
+mpc load _PLAYLISTS/linux/NEW_$datetime.m3u
+
+##send notification
+echo "$cyan>  sending mail... $reset"
+mail -s "gargoyle2 new playlist NEW_$datetime.m3u" -a /storage/dd1/mp3/_PLAYLISTS/linux/NEW_$datetime.m3u REDACTED@example.com < /storage/dd1/mp3/_PLAYLISTS/linux/NEW_$datetime.m3u
+

@@ -1,0 +1,148 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+SAVEIFS=$IFS
+IFS=$(echo -en "\n\b")
+_API_KEY=REDACTED_LASTFM_API_KEY
+#xml age limit in seconds: day=86400 week=604800
+_AGE_LIMIT=604800
+
+
+#_DIR="/storage/dd1/mp3/_Holiday/"
+#_DIR="/storage/dd1/mp3/_Soundtracks/"
+_DIR="/storage/dd1/mp3/_Various Artists/"
+if [ ! -z "$*" ] ; then
+	_DIR="$*"
+fi
+
+for _FILE in $(find "$_DIR" -type f -iname *.mp3)
+do
+	_ARTIST=$(eyeD3 -v "$_FILE" --no-color 2>/dev/null | grep '^artist: ' | sed 's|^artist: ||' | sed 's|\\| |g')
+        if grep -xq "$_ARTIST" ~/.last-fm-checked-names-VA.txt; then
+                echo $cyan"Artist Name Already Verified ($_ARTIST)"$reset
+        else
+                echo "Verifying Artist Name: $_ARTIST"$reset
+		_SEARCH_ARTIST=${_ARTIST//&/%26}
+        	_SEARCH_ARTIST=${_SEARCH_ARTIST//#/%23}
+        	_SEARCH_ARTIST=${_SEARCH_ARTIST//+/%252B}
+                _ART_COR_URL=$(wget -qO- "http://ws.audioscrobbler.com/2.0/?method=artist.getcorrection&artist=$_SEARCH_ARTIST&api_key=$_API_KEY" | xml_grep '//lfm/corrections/correction/artist/name' --text_only 2>/dev/null)
+                if [ "$_ART_COR_URL" = "<!-- error parsing file '-' -->" ]; then
+                        echo $red"xml_grep error"$reset
+                        _ART_COR_URL=""
+                        echo "$_ARTIST" >> ~/.last-fm-names-not-found-VA.txt && sort -u ~/.last-fm-names-not-found-VA.txt -o ~/.last-fm-names-not-found-VA.txt
+                fi
+                if [ ! -z "$_ART_COR_URL" ] ; then
+			echo $red"ARTIST NAME SHOULD BE: $_ART_COR_URL"$reset
+			_OLD_ARTIST="$_ARTIST"
+			_ARTIST="$_ART_COR_URL"
+			echo "Changing Name of $_FILE"
+			eyeD3 -a "$_ARTIST" "$_FILE" --to-v2.3 | grep "Setting "
+			echo "eyeD3 -a \"$_OLD_ARTIST\" \"$_FILE\" --to-v2.3 | grep \"Setting \"" >> /tmp/undo
+			_PATH=$(dirname $_FILE)
+			echo "$_PATH" >> /tmp/albums-updated && sort -u /tmp/albums-updated -o /tmp/albums-updated
+		else
+		        echo $green"$_ARTIST is OK"$reset
+		fi
+                echo "$_ARTIST" >> ~/.last-fm-checked-names-VA.txt && sort -u ~/.last-fm-checked-names-VA.txt -o ~/.last-fm-checked-names-VA.txt
+        fi
+	#ARTWORK
+        echo "Starting Artwork"
+	_ALBUM_PATH=$(dirname "$_FILE")
+	echo "Album Path is: $(basename $_ALBUM_PATH)"
+	#_ART_PATH=$(dirname "$_ART_PATH")
+	_ART_PATH="/storage/dd1/mp3/__artist_img/"
+	_SEARCH_ARTIST=${_ARTIST//&/%26}
+        _SEARCH_ARTIST=${_SEARCH_ARTIST//#/%23}
+        _SEARCH_ARTIST=${_SEARCH_ARTIST//+/%252B}
+	echo "Art Path is: "$yellow"$_ART_PATH"$reset
+	echo "Artist Is: "$cyan"$_ARTIST"$reset
+        _XML_ARTIST="http://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=$_SEARCH_ARTIST&api_key=$_API_KEY"
+#      	echo "$_XML_ARTIST"
+        _ARTIST_SAN=${_ARTIST//\//_}
+        _ARTIST_SAN=${_ARTIST//\:/_}
+        _ARTIST_SAN=${_ARTIST//\'/_}
+        _ARTIST_SAN=${_ARTIST//\"/_}
+        _ARTIST_SAN=${_ARTIST//\?/_}
+        _ARTIST_SAN=${_ARTIST//\./_}
+	_BIO_PATH="/storage/dd1/mp3/__bio_cache/$_ARTIST_SAN.xml"
+        _IMG_PATH="$_ART_PATH/$_ARTIST_SAN"
+#       echo "_BIO_PATH is: $_BIO_PATH"$reset
+#       echo "_IMAGE_PATH is: $_IMG_PATH"$reset
+        if [ -e "$_BIO_PATH" ] ; then
+                _XML_ARTIST_AGE=$(( ((`date +%s`) - (`date -r "$_BIO_PATH" +%s`)) ))
+        else
+                _XML_ARTIST_AGE=$(( $_AGE_LIMIT + 1 ))
+        fi
+        if [ $_XML_ARTIST_AGE -gt $_AGE_LIMIT ]; then
+               echo "Bio XML is old"$reset
+                _BIO=$(wget -qO- "$_XML_ARTIST")
+                if echo "$_BIO" | grep -q '<lfm status="ok">'; then
+                        if echo "$_BIO" | grep -q 'ID3 tags misallocated.'; then
+                                echo $red"Artist Tag is Wrong"$reset
+                                #touch "$_dir/BAD_ARTIST"
+                        else
+                                echo "$_BIO" > "$_BIO_PATH"
+                                echo $green"lastfm artist ok"$reset
+                        fi
+                else
+                        echo $red"last fm fail (artist)"$reset
+                fi
+        else
+                echo $green"Artist XML New Enough"$reset
+                _BIO=$(cat "$_BIO_PATH")
+        fi
+        if [ -s "$_IMG_PATH.jpg" ] ; then
+                        identify "$_IMG_PATH.jpg" > /dev/null || rm "_IMG_PATH.jpg" || echo $red"Image was Corrupt:  REMOVING"$reset || sleep 3
+        fi
+        if [ -e "$_BIO_PATH" ] ; then
+                if [ -s "$_IMG_PATH.jpg" ] ; then
+                        echo $green"We already had an Artist IMG"$reset
+                else
+                        #####ARTIST IMAGE########
+                        _XML_ARTIST_IMG=$(echo $_BIO | sed -n 's|.*<image size="mega">\(.*\)<streamable>.*|\1|p' | sed 's|<\/image>||g' | sed 's|\s||g')
+#                       echo "Artist image url is: $_XML_ARTIST_IMG"$reset
+                        _IMG_EXT=$(echo "$_XML_ARTIST_IMG" | sed -r 's/.+\.(gif|png|jpg)/\1/' | sed 's|\s||g' )
+#                       echo "extention is: $_IMG_EXT"$reset
+#                       echo "$_IMG_PATH.$_IMG_EXT"$reset
+                        if [ -s "$_IMG_PATH.$_IMG_EXT" ] ; then
+                                echo $green"We have an Artist IMG"$reset
+                        else
+#                               echo "getting image: $_IMG_PATH.$_IMG_EXT"$reset
+                                wget -qO "$_IMG_PATH.$_IMG_EXT" "$_XML_ARTIST_IMG"
+#                               echo "touching image"$reset
+                                touch "$_IMG_PATH.$_IMG_EXT"
+                                if [ -s "$_IMG_PATH.$_IMG_EXT" ] ; then
+                                        echo $green"IMG Scraped"$reset
+                                        if [ "$_IMG_EXT" != "jpg" ]; then
+                                                echo $yellow"converting $_IMG_EXT"$reset
+                                                convert "$_IMG_PATH.$_IMG_EXT" "$_IMG_PATH.jpg"
+                                                if [ -e "$_IMG_PATH.jpg" ] ; then
+                                                        rm "$_IMG_PATH.$_IMG_EXT"
+                                                fi
+                                        fi
+                                        identify "$_IMG_PATH.jpg" > /dev/null || rm "_IMG_PATH.jpg" || echo $red"Image was Corrupt: REMOVED"$reset
+                                else
+                                       echo $red"Bad IMG"$reset
+                                        echo "$_ARTIST" >> ~/.last-fm-art-not-found.txt && sort -u ~/.last-fm-art-not-found.txt -o ~/.last-fm-art-not-found.txt
+                                        rm "$_IMG_PATH.$_IMG_EXT"
+                                fi
+                        fi
+                fi
+	fi
+	#END_ARTWORK
+done
+if [ -s /tmp/albums-updated ] ; then
+	while read _UPDATED; do
+	  	_MPD_UPDATED=$(echo "$_UPDATED" | sed 's|^/storage/dd1/mp3/||')
+		echo "Updateing $_MPD_UPDATED in MPD DB"
+		mpc update --wait --no-status "$_MPD_UPDATED"
+	done </tmp/albums-updated
+	rm /tmp/albums-updated
+fi
+echo ""
+echo "Undo file is at /tmp/undo"
+echo "Please Delete if not needed"
+echo ""
+echo $red"names not recognized by last.fm"$reset
+cat ~/.last-fm-names-not-found-VA.txt
+sort /tmp/undo -o /tmp/undo
+exit

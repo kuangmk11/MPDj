@@ -1,0 +1,106 @@
+#!/bin/bash
+mpc clear
+source /etc/myscripts/colors.sh
+_OUTDIR=/tmp/playlists
+#reverse order
+_PLAYLIST=$(tac "$*")
+#normal order
+#_PLAYLIST=$(cat "$*")
+countlist=0
+foundlist=0
+while read -r line ; do
+	((countlist++))
+	line=${line//1,000/1000/}
+	line=${line//Circling Overhead/Circling Overland/}
+	line=${line//—/,/}
+	line=${line// - / , /}
+	line=${line//\?/}
+
+	_ARTIST=$(echo $line | cut -f1 -d',' | sed "s/[ \t]*$//" | sed "s/^[ \t]*//" | awk '{$1=$1};1')
+	_TITLE=$(echo $line | cut -f 2- -d',' | sed "s/^[ \t]*//" | sed "s/\///" | sed "s/^[Tt]he//" | awk '{$1=$1};1')
+	_TITLE=$(echo $_TITLE | sed "s/^[Tt]he//" | awk '{$1=$1};1')
+#	echo "### searching for $green $_ARTIST - $_TITLE $reset"
+#	echo "$_ARTIST"
+#	echo "$_TITLE"
+				#FIX FOR SINGLE CHARACTER TITLES
+				if [[ "$_TITLE" = [a-zA-Z] ]] ; then
+					_FILE=$(mpc find artist "$_ARTIST" title "$_TITLE")
+				else
+					_FILE=$(mpc search artist "$_ARTIST" title "$_TITLE")
+				fi
+				#STRIP SHIT IN ()
+				if [[ -z $_FILE ]] ; then
+					echo "not found: stripping (*)"
+					_TITLE=$(echo "$_TITLE" | sed 's/ *([^)]*)//g' | sed "s/[ \t]*$//g" | sed "s/^[ \t]*//g" | awk '{$1=$1};1')
+					_ARTIST=$(echo "$_ARTIST" | sed 's/ *([^)]*)//g' | sed "s/[ \t]*$//g" | sed "s/^[ \t]*//g" | awk '{$1=$1};1')
+					_FILE=$(mpc search artist "$_ARTIST" title "$_TITLE")
+				fi
+				#CHANGE & to AND
+				if [[ -z $_FILE ]] ; then
+					echo "not found: & to and"
+					_ARTIST=$(echo "$_ARTIST" | sed 's/\&/and/g' | sed 's|\.||g')
+					_TITLE=$(echo "$_TITLE" | sed "s/Im /I'm /g")
+					_TITLE=$(echo "$_TITLE" | sed "s/In a City/In The City/g")
+					_FILE=$(mpc search artist "$_ARTIST" title "$_TITLE")
+				fi
+				#STRIP TRAILING CHARACTER TO BE SURE
+				if [[ -z $_FILE ]] ; then
+					echo "not found: stripping tails"
+					_LARTIST=$(echo "$_ARTIST" | sed 's|.$||g')
+					_LTITLE=$(echo "$_TITLE" | sed 's|.$||g')
+					_FILE=$(mpc search artist "$_LARTIST" title "$_LTITLE")
+				fi
+				#STRIP TRAILING CHARACTER TO BE SURE
+				if [[ -z $_FILE ]] ; then
+					echo "not found: stripping tails"
+					_LARTIST=$(echo "$_ARTIST" | sed 's|.$||g')
+					_LTITLE=$(echo "$_TITLE" | sed 's|.$||g')
+					_FILE=$(mpc search artist "$_LARTIST" title "$_LTITLE")
+				fi
+				#FUZZY LOGIC MANUAL
+
+				if [[ -z $_FILE ]] ; then
+					echo "not found: trying fuzzy"
+					if [[ $1 = -m ]] ; then
+						_TEST=$(mpc search artist "$_ARTIST" | wc -l)
+						if [[ $_TEST -gt 1 ]] ; then
+							rm /tmp/select
+							touch /tmp/select
+							#$_FILE=$(mpc search artist "$_ARTIST" | fzf --query="$_TITLE - $_ARTIST")
+							mpc search artist "$_ARTIST" | fzf -i --query="$_TITLE" > /tmp/select
+							_FILE=$(cat /tmp/select)
+							#echo $_FILE
+						fi
+					fi
+				fi
+				if [[ -z $_FILE ]] ; then
+					echo "TRYING BY TITLE"
+					_FILE=$(mpc find title "$_TITLE")
+					_ARTISTA=$(echo "$_ARTIST" | sed 's/ /\n/g')
+					echo "###"
+					echo "$_ARTISTA"
+					echo "###"
+					for l in "$_ARTISTA"; do
+						_F=0
+						_NF=0
+						echo "$_FILE" | grep "$l" && ((_F++)) || ((_NF++))
+						if [[ $_NF -gt $_F ]] ; then
+							_FILE=""
+							echo "TEST FAIL: $_F Found and $_NF Not Found"
+						else
+							echo "TEST SUCCESS: $_TEST matches"
+
+						fi
+					done
+				fi
+				if [[ -z $_FILE ]] ; then
+						echo "###$red $_ARTIST - $_TITLE $reset NOT FOUND"
+				else
+					((foundlist++))
+					_FILE=$(echo "${_FILE##*$'\n'}")
+					mpc add "$_FILE"
+#					echo "adding ####$_FILE####"
+				fi
+			done <<< "$_PLAYLIST"
+echo found "$foundlist" of "$countlist"
+mpc play

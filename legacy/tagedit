@@ -1,0 +1,84 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+clear
+_file=$(mpc-path)
+_dir=$(dirname "$_file")
+_escapedpath=$(mpc current -f "%file%" | sed 's|^|/storage/dd1/mp3/|' | sed 's|\s|\\ |g' | sed "s/'/\\\'/g")
+_escapeddir=$(dirname "$_escapedpath" | sed 's|^/storage/dd1/mp3/||')
+_artist="$(mpc current -f '%artist%')"
+_album="$(mpc current -f '%album%')"
+_track="$(mpc current -f '%track%')"
+_title="$(mpc current -f '%title%')"
+#echo "$_artist - $_album - $_track - $_title"
+eyeD3 -v "$_file"
+echo $cyan
+PS3='TAG to edit: '
+options=("Artist: $_artist" "Album: $_album" "Track: $_track" "Title: $_title" "EXIT")
+select opt in "${options[@]}"
+do
+	case $opt in
+        	"Artist: $_artist")
+			echo $reset
+			eyeD3 -v "$_file" --no-color | grep "album artist: None"
+			if [ $? -eq 1 ]; then
+	    			echo $yellow
+				echo "THIS LOOKS LIKE A COMPILATION"
+				echo "EDIT WILL BE WRITTEN TO *ALL* FILES IN DIRECTORY"
+				echo $red
+				ls -l "$_dir" | grep .mp3
+				echo $reset
+				read -r -p "Are you sure? [y/N] " response
+				case $response in
+				    [yY][eE][sS]|[yY]) 
+				        echo "OK, Proceed"
+					;;
+				    *)
+				        echo "bye"
+					exit 0
+				        ;;
+				esac
+			fi
+			read -e -p "Artist:" -i "$_artist" _newartist
+                        eyeD3 -a "$_newartist" "$_dir" --to-v2.3 | grep "Setting "
+                        mpc update "$_escapeddir"
+			exit 0
+
+			;;
+        	"Album: $_album")
+			echo $reset
+            		#echo "you chose Album"
+			read -e -p "Album:" -i "$_album" _newalbum
+            		eyeD3 -A "$_newalbum" "$_dir" --to-v2.3 | grep "Setting "
+                        mpc update "$_escapeddir"
+			exit 0
+			;;
+        	"Track: $_track")
+            		echo $reset
+			#echo "you chose Track"
+			read -e -p "Track:" -i "$_track" _newtrack
+            		eyeD3 -t "$_newtrack" "$_file" --to-v2.3 | grep "Setting "
+                        mpc update "$_escapeddir"
+			exit 0
+			;;
+		"Title: $_title")
+            		echo $reset
+			#echo "you chose Title"
+            		read -e -p "Title:" -i "$_title" _newtitle
+            		eyeD3 -t "$_newtitle" "$_file" --to-v2.3 | grep "Setting "
+			mpc update "$_escapeddir"
+			exit 0
+			;;
+		"EXIT")
+            		echo $reset
+			break
+			exit
+            		;;
+        	*)
+			echo $red
+			echo "INVALID OPTION - EXITING"
+			echo $reset
+			exit 1
+			;;
+    	esac
+done
+

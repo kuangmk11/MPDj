@@ -1,0 +1,64 @@
+#!/bin/bash
+echo "$*" >> /home/ono/.ncmpc/ncmpc-lyrics.log
+source /etc/myscripts/mpd/lyrics/variables
+#_ARTIST="$(mpc -f '%artist%' | head -n 1 | sed 's|\/|_|' | perl -ne 'print lc')"
+##_TITLE="$(mpc -f '%title%' | head -n 1 | sed 's|\/|_|' | perl -ne 'print lc')"
+#_TITLE="$(mpc -f '%title%' | head -n 1 | sed 's|\/|_|' | sed -r 's|\s*\(.+\)||g' | sed -r 's|\s*\[.+\]||g' | perl -ne 'print lc')"
+#_ARTIST=${_ARTIST//[:+=.,]}
+#_TITLE=${_TITLE//[:+=.,]}
+#_LYRPATH="/storage/dd1/mp3/_lyrics/$_ARTIST"
+#_LYRFILE="/storage/dd1/mp3/_lyrics/$_ARTIST/$_ARTIST - $_TITLE.txt"
+#lrc_LYRFILE="/storage/dd1/mp3/_lyrics/$_ARTIST/$_ARTIST - $_TITLE.lrc"
+#_file=/tmp/lyrics.tmp
+#_2ARTIST=$(echo "$_ARTIST" | sed -r 's/Christian Death.+/Christian Death/')
+#_TPL='http://makeitpersonal.co/lyrics?artist=<artist>&title=<title>'
+#_SRY="Sorry, We don't have lyrics for this song yet."
+#_URL="${_TPL//"<artist>"/$_2ARTIST}"
+#_URL="${_URL//"<title>"/$_TITLE}"
+_FOUND=0
+
+
+if [ -s "$lrc_LYRFILE" ] ; then
+	sed -E 's/^\[.+]//' "$lrc_LYRFILE"
+	exit 0
+elif [ -s "$_LYRFILE" ] ; then
+	cat "$_LYRFILE"
+	exit 0
+else
+        _LYRICS=$(wget -qO- "$_URL" | sed '/./,$!d')
+        if [ "$_LYRICS" != "$_SRY" ]; then
+                mkdir "$_LYRPATH" >/dev/null 2>&1
+                echo "$_LYRICS" > "$_LYRFILE"
+                #eyeD3 --lyrics=eng:Lyrics:"$_LYRICS" "$_FILE" 1>/dev/null
+         else
+                rm "$_file" >> /dev/null 2>&1
+                touch "$_file"
+                ruby /etc/myscripts/mpd/lyrics/.support/20-lyricwiki.rb "$_2ARTIST" "$_TITLE" 2> /dev/null >> "$_file"
+                if [ -s "$_file" ] ; then
+                        mkdir /storage/dd1/mp3/_lyrics/"$_ARTIST" >> /dev/null 2>&1
+			sed -i "s/&#8217;/'/" "$_file"
+                        sed -i "s#<b>##" "$_file"
+                        sed -i "s#<i>##" "$_file"
+                        sed -i "s#</b>##" "$_file"
+                        sed -i "s#</i>##" "$_file"
+                        tail -n +2 "$_file" > "$_LYRFILE"
+                else
+    		        touch "$_file"
+                fi
+        fi
+	minimumsize=2
+	actualsize=$(wc -c "$_LYRFILE" | cut -f 1 -d ' ')
+	if [ $actualsize -ge $minimumsize ]; then
+        	touch "$_LYRFILE"
+	else
+        	rm "$_LYRFILE"
+	fi
+	if [ -s "$_LYRFILE" ] ; then
+	        _FOUND=1
+	        cat "$_LYRFILE"
+	else
+	        echo "$_2ARTIST - $_TITLE" >> /var/log/lyrics.log
+	        sort -u /var/log/lyrics.log -o /var/log/lyrics.log
+	fi
+	rm "$_file" > /dev/null 2>&1
+fi

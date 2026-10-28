@@ -1,0 +1,51 @@
+#!/bin/bash
+_INDIR=/tmp/playlists/_not-found
+
+
+if [[ $1 = --oneshot ]] ; then
+	shift
+	ONESHOT=1
+	_LIST="$1"
+elif [[ $1 = --file ]] ; then
+	shift
+	_LIST=$(cat "$1" | sort -u)
+else
+	_LIST=$(cat "$_INDIR" | sort -u)
+fi
+
+cd /storage/work/Music
+while read -r line ; do
+	if [[ ! -z $line ]] ; then
+		_ARTIST=""
+		_TITLE==""
+		if grep "https:" <<< $line ; then
+			_URL=$(echo "$line")
+		else
+			_URL=$(google-cli -C --noua "site:youtube.com $line" --np | grep "https:" | head -n1)
+			_ARTIST=$(echo $line | cut -f1 -d'-' | sed "s/[ \t]*$//" | sed "s/^[ \t]*//" | awk '{$1=$1};1')
+        	        _TITLE=$(echo $line | cut -f 2- -d'-' | sed "s/^[ \t]*//" |  sed "s/[ \t]*$//" | awk '{$1=$1};1')
+		fi
+		#echo "$_URL"
+		if [[ -z $_URL ]] ; then
+			echo "no hit on: $line"
+		else
+			echo "grabbing: $line @ $_URL"
+			_FILE=$(youtube-dl -x "$_URL" --audio-format mp3 --no-check-certificate 2>&1 | grep ".mp3" | sed 's|\[ffmpeg\] Destination\: ||')
+			if [[ ! -z $_FILE ]] ; then
+				if [[ -z $_ARTIST ]] ; then
+					_ARTIST=$(echo $_FILE | cut -f1 -d'-' | sed "s/[ \t]*$//" | sed "s/^[ \t]*//" | awk '{$1=$1};1')
+                        		_TITLE=$(echo $_FILE | cut -f2 -d'-' | sed "s/^[ \t]*//" |  sed "s/[ \t]*$//" | awk '{$1=$1};1')
+				fi
+				eyeD3 --quiet --to-v2.3 --artist "$_ARTIST" --title "$_TITLE" --album "Dark Wave Playlist" "$_FILE"
+			fi
+		fi
+	fi
+done <<< "$_LIST"
+
+if [[ $ONESHOT = 1 ]] ; then
+	echo "FILENAME:$_FILE"
+	mpc update _Darkwave.Radio
+else
+	easytag /storage/work/Music
+	mpc update _Darkwave.Radio
+fi

@@ -1,0 +1,25 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+
+_METRO="http://www.metrolyrics.com/"
+if [[ $1 = -p ]] ; then
+	source /etc/myscripts/mpd/lyrics/variables
+	echo "using currently playing track"
+else
+	_ARTIST="$1"
+	_TITLE="$2"
+fi
+
+_ARTIST=${_ARTIST//ü/ue}
+_ARTIST=${_ARTIST//ÿ/y}
+
+_URL="$_METRO$_TITLE-lyrics-$_ARTIST.html"
+_URL=${_URL// /-}
+#echo "$_URL"
+
+
+#_SEARCH=$(wget -qO- "$_URL" | sed -nr "/<p class='verse'>/,\$p" | sed "/\/div/,\$ d" | sed 's|<br/*>||g' | sed 's|<p class=.verse.>|\n|g')
+_SEARCH=$(wget -qO- "$_URL" | sed -nr "/<p class='verse'>/,\$p" | sed "/\/div/q" | sed 's|<br/*>||g' | sed 's|<p class=.verse.>|\n|g' | sed 's|<\/div>||g' | sed 's|<\/p>||g' | sed '/^\s*$/d')
+echo "$_SEARCH"
+#echo "$_SEARCH" > /tmp/search
+

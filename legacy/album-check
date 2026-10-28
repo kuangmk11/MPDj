@@ -1,0 +1,74 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+source /etc/myscripts/mpd/lyrics/variables
+#/etc/myscripts/mpd/lyrics/last-fm-bio >> /dev/null
+
+oldIFS="$IFS"
+IFS='
+'
+_DISCLST=$(wget -qO- "https://api.discogs.com/artists/28972/releases?year,asc" | sed 's|artist|\nartist|g')
+echo "$_DISCLST"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+exit
+_ALB1=$(wget -qO- "$_XML_ALBUMCHECK")
+#echo $_ALB1
+#exit
+
+if echo "$_ALB1" | grep -q '<lfm status="ok">'; then
+	echo "parsing albums"
+	_ALB=$(echo "$_ALB1" | xml_grep '//topalbums/album/name' --text_only)
+	_LST=$(echo "$_ALB1" | xml_grep '//topalbums/album/playcount' --text_only)
+	echo "lastfm ALB ok"
+else
+	echo "last fm fail (ALB)"
+fi
+
+#echo $_ALB
+#echo $_LST
+#exit
+#while read -r line ; do
+#	echo "$line"
+#done <<< "$_ALB"
+#
+#while read -r line ; do
+#	echo "$line"
+#done <<< "$_LST"
+
+while read -r line; do
+    	ALB_ARRAY+=($(echo "$line"))
+done <<< "$_ALB"
+
+while read -r line; do
+	LST_ARRAY+=($(echo "$line"))
+done <<< "$_LST"
+
+#echo "${LST_ARRAY[1]} - ${ALB_ARRAY[1]}"
+for i in ${!ALB_ARRAY[@]}; do
+	echo "${LST_ARRAY[i]} - ${ALB_ARRAY[i]}"
+done
+

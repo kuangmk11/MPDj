@@ -1,0 +1,25 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+#position=$(mpc -f %position% | head -n 1)
+#if [[ $position == 1 ]] ; then
+#        echo "nothing to do"
+#	exit
+#else
+#	touch /storage/dd1/mp3/_PLAYLISTS/MPD/playlist.m3u
+#fi
+#position=$((position+1))
+#sed -n "/$position/,/playlist_end/p" /var/lib/mpd/state > /storage/dd1/mp3/_PLAYLISTS/MPD/playlist.m3u
+#sed -i 's|playlist_end||g' /storage/dd1/mp3/_PLAYLISTS/MPD/playlist.m3u
+#sed -i -r 's|^[0-9]+:|/storage/dd1/mp3/|' /storage/dd1/mp3/_PLAYLISTS/MPD/playlist.m3u
+#mpc crop
+#mpc load _PLAYLISTS/MPD/playlist.m3u
+#rm /storage/dd1/mp3/_PLAYLISTS/MPD/playlist.m3u
+
+#####
+position=$(mpc current -f %position%)
+if [[ $position == 1 ]] ; then
+        echo "nothing to do"
+        exit
+fi
+(( position-- ))
+mpc del 1-"$position"

@@ -1,0 +1,125 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+SAVEIFS=$IFS
+IFS=$(echo -en "\n\b")
+#xml age limit in seconds: day=86400 week=604800
+_AGE_LIMIT=604800
+_BIO_XML=bio.xml
+_BIO_TXT=bio.txt
+_API_KEY=REDACTED_LASTFM_API_KEY
+_dir=$1
+[ -z "$1" ] && echo "You must specify a directory" && exit
+	echo ""
+#	echo "working on: $_dir"$reset
+	_ARTIST=$(basename "$_dir")
+	if [ -s "$_dir/TRUENAME" ] ; then
+		_ARTIST=$(cat "$_dir/TRUENAME")
+	elif grep -xq "$_ARTIST" ~/.last-fm-checked-names.txt; then
+		echo $green"Artist Name Already Verified"$reset
+	else
+		echo "Verifying Artist Name..."$reset
+		_ART_COR_URL=$(wget -qO- "http://ws.audioscrobbler.com/2.0/?method=artist.getcorrection&artist=$_ARTIST&api_key=$_API_KEY" | xml_grep '//lfm/corrections/correction/artist/name' --text_only 2>/dev/null)
+		if [ "$_ART_COR_URL" = "<!-- error parsing file '-' -->" ]; then
+	                echo $red"xml_grep error"$reset
+	                _ART_COR_URL=""
+			echo "$_ARTIST" >> ~/.last-fm-names-not-found.txt && sort -u ~/.last-fm-names-not-found.txt -o ~/.last-fm-names-not-found.txt
+	        else
+		        echo "$_ARTIST" >> ~/.last-fm-checked-names.txt && sort -u ~/.last-fm-checked-names.txt -o ~/.last-fm-checked-names.txt
+		fi
+	        [ ! -z "$_ART_COR_URL" ] && echo $red"ARTIST NAME SHOULD BE: $_ART_COR_URL"$reset && _ARTIST="$_ART_COR_URL" && echo "$_ART_COR_URL" > "$_dir/TRUENAME"
+	fi
+	echo "Artist Is: $_ARTIST"$reset
+	_SEARCH_ARTIST=${_ARTIST//&/%26}
+	_SEARCH_ARTIST=${_SEARCH_ARTIST//#/%23}
+	_SEARCH_ARTIST=${_SEARCH_ARTIST//+/%252B}
+	_XML_ARTIST="http://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=$_SEARCH_ARTIST&api_key=$_API_KEY"
+#	echo "$_XML_ARTIST"
+	_BIO_PATH="$_dir/$_BIO_XML"
+	_IMG_PATH="$_dir/artist"
+#	echo "_BIO_PATH is: $_BIO_PATH"$reset
+#	echo "_IMAGE_PATH is: $_IMG_PATH"$reset
+	if [ -e "$_BIO_PATH" ] ; then
+        	_XML_ARTIST_AGE=$(( ((`date +%s`) - (`date -r "$_BIO_PATH" +%s`)) ))
+	else
+        	_XML_ARTIST_AGE=$(( $_AGE_LIMIT + 1 ))
+	fi
+	if [ $_XML_ARTIST_AGE -gt $_AGE_LIMIT ]; then
+#	        echo "Bio XML is old"$reset
+	        _BIO=$(wget -qO- "$_XML_ARTIST")
+	        if echo "$_BIO" | grep -q '<lfm status="ok">'; then
+			if echo "$_BIO" | grep -q 'ID3 tags misallocated.'; then
+				echo $red"Artist Tag is Wrong"$reset
+				touch "$_dir/BAD_ARTIST"
+			else
+	                	echo "$_BIO" > "$_BIO_PATH"
+	                	echo $green"lastfm artist ok"$reset
+			fi
+	        else
+	                echo $red"last fm fail (artist)"$reset
+	        fi
+	else
+	        echo $green"Artist XML New Enough"$reset
+	        _BIO=$(cat "$_BIO_PATH")
+	fi
+	if [ -s "$_IMG_PATH.jpg" ] ; then
+                        identify "$_IMG_PATH.jpg" > /dev/null || rm "_IMG_PATH.jpg" || echo $red"Image was Corrupt:  REMOVING"$reset || sleep 3
+	fi
+	if [ -e "$_BIO_PATH" ] ; then
+		if [ -s "$_IMG_PATH.jpg" ] ; then
+			echo $green"We already had an Artist IMG"$reset
+		else
+			#####ARTIST IMAGE########
+			_XML_ARTIST_IMG=$(echo $_BIO | sed -n 's|.*<image size="mega">\(.*\)<streamable>.*|\1|p' | sed 's|<\/image>||g' | sed 's|\s||g')
+#			echo "Artist image url is: $_XML_ARTIST_IMG"$reset
+			_IMG_EXT=$(echo "$_XML_ARTIST_IMG" | sed -r 's/.+\.(gif|png|jpg)/\1/' | sed 's|\s||g' )
+#			echo "extention is: $_IMG_EXT"$reset
+#			echo "$_IMG_PATH.$_IMG_EXT"$reset
+			if [ -s "$_IMG_PATH.$_IMG_EXT" ] ; then
+       		 		echo $green"We have an Artist IMG"$reset
+			else
+#				echo "getting image: $_IMG_PATH.$_IMG_EXT"$reset
+				wget -qO "$_IMG_PATH.$_IMG_EXT" "$_XML_ARTIST_IMG"
+#			        echo "touching image"$reset
+   				touch "$_IMG_PATH.$_IMG_EXT"
+				if [ -s "$_IMG_PATH.$_IMG_EXT" ] ; then
+					echo $green"IMG Scraped"$reset
+					if [ "$_IMG_EXT" != "jpg" ]; then
+               	                 		echo $yellow"converting $_IMG_EXT"$reset
+               	                 		convert "$_IMG_PATH.$_IMG_EXT" "$_IMG_PATH.jpg"
+               	                 		if [ -e "$_IMG_PATH.jpg" ] ; then
+               	                         		rm "$_IMG_PATH.$_IMG_EXT"
+               	                 		fi
+					fi
+                        		identify "$_IMG_PATH.jpg" > /dev/null || rm "_IMG_PATH.jpg" || echo $red"Image was Corrupt: REMOVED"$reset
+				else
+					echo $red"Bad IMG"$reset
+					echo "$_ARTIST" >> ~/.last-fm-art-not-found.txt && sort -u ~/.last-fm-art-not-found.txt -o ~/.last-fm-art-not-found.txt
+					rm "$_IMG_PATH.$_IMG_EXT"
+                        	fi
+			fi
+		fi
+		#############BIO TXT#########################
+		if [ -e "$_dir/bio.txt" ] ; then
+		        echo $green"we have bio.txt"$reset
+		else
+			_XML_SIMILAR_ARTISTS=$(echo "$_BIO" | xml_grep '//artist/similar/artist/name' --text_only)
+			_XML_TAGS=$(echo "$_BIO" | xml_grep '//artist/tags/tag/name' --text_only)
+			_XML_LISTENERS=$(echo "$_BIO" | xml_grep '//artist/stats/listeners' --text_only)
+			_XML_PLAYCOUNT=$(echo "$_BIO" | xml_grep '//artist/stats/playcount' --text_only)
+			_XML_CONTENT=$(echo "$_BIO" | xml_grep '//artist/bio/content' --text_only)
+			_XML_SUMMARY=$(echo "$_BIO" | xml_grep '//artist/bio/summary' --text_only)
+			echo $green"Writing $_dir/bio.txt"$reset
+        		echo "BIO ########################################################################" > "$_dir/bio.txt"
+       	 		echo "$_XML_CONTENT" | html2text | sed 's|&quot;|"|g' | sed 's|&amp;|\&|g' | sed "s|â|'|g" >> "$_dir/bio.txt"
+		        echo "" >> "$_dir/bio.txt"
+	        	echo "Similar Artists:" >> "$_dir/bio.txt"
+		        echo "$_XML_SIMILAR_ARTISTS" >> "$_dir/bio.txt"
+		        echo "" >> "$_dir/bio.txt"
+	        	echo "Tags:" >> "$_dir/bio.txt"
+		        echo "$_XML_TAGS" >> "$_dir/bio.txt"
+		fi
+
+	else
+		echo $red"No bio.xml > Skipping Further Action"$reset
+	fi
+exit

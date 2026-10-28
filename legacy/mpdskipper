@@ -1,0 +1,356 @@
+#!/bin/bash
+IFS=$(echo -e "\n\b")
+DOY=$(date +%j)
+exitstat=0
+source /home/ono/.mpdskip/config
+#enable/disable
+if [[ $1 = --enable ]] ; then sed -i 's|enabled=0|enabled=1|g' /home/ono/.mpdskip/config && echo "enabled" ; fi
+if [[ $1 = --disable ]] ; then sed -i 's|enabled=1|enabled=0|g' /home/ono/.mpdskip/config && echo "disabled" ; fi
+if [[ $1 = --skiplive ]] ; then sed -i 's|skiplive=0|skiplive=1|g' /home/ono/.mpdskip/config && echo "skiplive enabled" ; fi
+if [[ $1 = --skipliveoff ]] ; then sed -i 's|skiplive=1|skiplive=0|g' /home/ono/.mpdskip/config && echo "skiplive disabled" ; fi
+
+if [ $enabled = 0 ] ; then exit ; fi
+
+#clear temp bans
+if [[ $1 = --purgetemp ]] ; then
+	echo "Clearing Temporary bans"
+	> /home/ono/.mpdskip/tmpban.txt
+        /etc/myscripts/mpd/mpdskipper >/dev/null 2>&1
+        exit
+fi
+
+#help switch
+if [[ $1 = --HELP ]] ; then cat /home/ono/.mpdskip/HELP ;  exit ; fi
+
+#edit ban lists
+if [[ $1 = --edit ]] ; then
+	shift
+	if [[ -z $1 ]] ; then echo "You must specify a list to edit: artist, album, genre, temp, perm, dir or all" ; fi
+	if [[ $1 = artist ]] ; then nano /home/ono/.mpdskip/artistban.txt ; fi
+	if [[ $1 = album ]] ; then nano /home/ono/.mpdskip/albumban.txt ; fi
+	if [[ $1 = temp ]] ; then nano /home/ono/.mpdskip/tmpban.txt ; fi
+	if [[ $1 = perm ]] ; then nano /home/ono/.mpdskip/permban.txt ; fi
+	if [[ $1 = genre ]] ; then nano /home/ono/.mpdskip/genreban.txt ; fi
+	if [[ $1 = dir ]] ; then nano /home/ono/.mpdskip/dirban.txt ; fi
+	if [[ $1 = string ]] ; then nano /home/ono/.mpdskip/stringban.txt ; fi
+	if [[ $1 = whitelist ]] ; then nano /home/ono/.mpdskip/whitelist.txt ; fi
+
+	if [[ $1 = all ]] ; then nano /home/ono/.mpdskip/*.txt ; fi
+        /etc/myscripts/mpd/mpdskipper
+        exit
+fi
+
+_CURRENT=($(mpc current -f "%artist%\n%album%\n%track%\n%title%\n%genre%\n%file%"))
+#				1	2	3	4	  5	   6		7
+_PLAYLIST=$(mpc playlist -f "%genre%\t%artist%\t%album%\t%track%\t%title%\t%file%\t%position%\t%comment%")
+declare -A _SONG
+_SONG[artist]=${_CURRENT[0]}
+_SONG[album]=${_CURRENT[1]}
+_SONG[track]=${_CURRENT[2]}
+_SONG[title]=${_CURRENT[3]}
+_SONG[genre]=${_CURRENT[4]}
+_SONG[file]=${_CURRENT[5]}
+_SONG[dir]=$(dirname $(echo ${_SONG[file]}))
+_SONG[fullfile]=$(sed 's|^|/storage/dd1/mp3/|' <<< ${_CURRENT[5]})
+
+varbuild(){
+_CURRENT=($(mpc current -f "%artist%\n%album%\n%track%\n%title%\n%genre%\n%file%"))
+declare -A _SONG
+_SONG[artist]=${_CURRENT[0]}
+_SONG[album]=${_CURRENT[1]}
+_SONG[track]=${_CURRENT[2]}
+_SONG[title]=${_CURRENT[3]}
+_SONG[genre]=${_CURRENT[4]}
+_SONG[file]=${_CURRENT[5]}
+_SONG[dir]=$(dirname $(echo ${_SONG[file]}))
+_SONG[fullfile]=$(sed 's|^|/storage/dd1/mp3/|' <<< ${_CURRENT[5]})
+}
+
+skipcurrent(){
+_AATT=$(mpc current -f "%artist%\t%album%\t%track%\t%title%\t%file%")
+varbuild
+if grep -qf /home/ono/.mpdskip/permban.txt <<< "$_AATT" ; then
+	mpc next
+	echo "$(date)¥skipcurrent:perm¥$_AATT" | sed 's|¥|\t|g' >> /home/ono/.mpdskip/mpdskip.log
+	exitstatus=1
+elif grep -qf /home/ono/.mpdskip/dirban.txt <<< $(dirname ${_SONG[file]}) ; then
+	mpc -q next
+	echo "$(date)¥skipcurrent:dir¥$_AATT" | sed 's|¥|\t|g' >> /home/ono/.mpdskip/mpdskip.log
+	exitstatus=1
+elif grep -qf /home/ono/.mpdskip/tmpban.txt <<< "$_AATT" ; then
+	mpc -q next
+	echo "$(date)¥skipcurrent:tmp¥$_AATT" | sed 's|¥|\t|g' >> /home/ono/.mpdskip/mpdskip.log
+	exitstatus=1
+elif grep -qf /home/ono/.mpdskip/genreban.txt <<< ${_SONG[genre]}  ;  then
+	mpc -q next
+	echo "$(date)¥skipcurrent:genre¥$_AATT" | sed 's|¥|\t|g' >> /home/ono/.mpdskip/mpdskip.log
+	exitstatus=1
+elif grep -qf /home/ono/.mpdskip/artistban.txt <<< ${_SONG[artist]}  ;  then
+	mpc -q next
+	echo "$(date)¥skipcurrent:artist¥$_AATT" | sed 's|¥|\t|g' >> /home/ono/.mpdskip/mpdskip.log
+	exitstatus=1
+elif grep -qf /home/ono/.mpdskip/albumban.txt <<< ${_SONG[album]}  ;  then
+        mpc -q next
+        echo "$(date)¥skipcurrent:album¥$_AATT" | sed 's|¥|\t|g' >> /home/ono/.mpdskip/mpdskip.log
+	exitstatus=1
+elif grep -qf /home/ono/.mpdskip/stringban.txt <<< ${_SONG[title]}  ;  then
+        mpc -q next
+        echo "$(date)¥skipcurrent:string¥$_AATT" | sed 's|¥|\t|g' >> /home/ono/.mpdskip/mpdskip.log
+	exitstatus=1
+elif grep -q "\[Live\]" <<< $(echo "$_AATT" | cut -d $'\t' -f5) && [[ $skiplive =  1 ]] ; then
+	mpc -q next
+	echo "$(date)¥skipcurrent:Live¥$_AATT" | sed 's|¥|\t|g' >> /home/ono/.mpdskip/mpdskip.log
+	exitstatus=1
+else
+exitstatus=0
+fi
+}
+
+skipcurrent
+#while [  $exitstatus -ne 0 ]; do
+#	skipcurrent
+#done
+
+escapeit(){
+sed 's|\[|\\[|g' | sed 's|\]|\\]|g' | sed 's|\.|\\.|g' | sed 's|\$|\\$|g'
+}
+
+DEBUG(){
+	echo "$*"" $_CUTLIST" >> /home/ono/.mpdskip/mpdskip_debug.log
+}
+
+
+#ban switch
+if [[ $1 = -b ]] ; then
+	mpc current -f "%artist%\t%album%\t%track%\t%title%" | escapeit >> /home/ono/.mpdskip/permban.txt
+	echo "Permanently Banning ${_SONG[artist]} - ${_SONG[title]}"
+	sort -u /home/ono/.mpdskip/permban.txt -o /home/ono/.mpdskip/permban.txt
+	/etc/myscripts/mpd/mpdskipper
+	exit
+fi
+
+#temp ban switch
+if [[ $1 = -t ]] ; then
+	mpc current -f "%artist%\t%album%\t%track%\t%title%" | escapeit >> /home/ono/.mpdskip/tmpban.txt
+	echo "Temporarily Banning ${_SONG[artist]} - ${_SONG[title]}"
+	sort -u /home/ono/.mpdskip/tmpban.txt -o /home/ono/.mpdskip/tmpban.txt
+	/etc/myscripts/mpd/mpdskipper
+	exit
+fi
+
+#dir ban switch
+if [[ $1 = --dir ]] ; then
+	shift
+ 	if [[ -z "$*" ]] ; then
+                echo "banning directory: ${_SONG[dir]}"
+		echo "${_SONG[dir]}" | escapeit >> /home/ono/.mpdskip/dirban.txt
+        else
+                echo "banning directory: $*"
+		echo "$*" | escapeit >> /home/ono/.mpdskip/dirban.txt
+        fi
+        sort -u /home/ono/.mpdskip/dirban.txt -o /home/ono/.mpdskip/dirban.txt
+        /etc/myscripts/mpd/mpdskipper
+        exit
+fi
+
+#album ban switch
+if [[ $1 = --album ]] ; then
+	shift
+	if [[ -z "$*" ]] ; then
+		echo "banning album: ${_SONG[album]}"
+                echo "^${_SONG[album]}" | escapeit >> /home/ono/.mpdskip/albumban.txt
+        else
+                echo "banning album: $*"
+		echo "$*" | escapeit >> /home/ono/.mpdskip/albumban.txt
+        fi
+        sort -u /home/ono/.mpdskip/albumban.txt -o /home/ono/.mpdskip/albumban.txt
+        /etc/myscripts/mpd/mpdskipper
+        exit
+fi
+
+#string ban switch
+if [[ $1 = --string ]] ; then
+	shift
+	echo "banning string: $*"
+        echo "$*" | escapeit >> /home/ono/.mpdskip/stringban.txt
+        sort -u /home/ono/.mpdskip/stringban.txt -o /home/ono/.mpdskip/stringban.txt
+        /etc/myscripts/mpd/mpdskipper
+        exit
+fi
+
+#genre ban switch
+if [[ $1 = --genre ]] ; then
+        shift
+	if [[ -z "$*" ]] ; then
+		echo "banning genre: ^${_SONG[genre]}"
+		echo "^${_SONG[genre]}" | escapeit >> /home/ono/.mpdskip/genreban.txt
+	else
+        	echo "banning genre: $*"
+		echo "^$*" | escapeit >> /home/ono/.mpdskip/genreban.txt
+        fi
+	sort -u /home/ono/.mpdskip/genreban.txt -o /home/ono/.mpdskip/genreban.txt
+        /etc/myscripts/mpd/mpdskipper
+        exit
+fi
+
+#artist ban switch
+if [[ $1 = --artist ]] ; then
+        shift
+        if [[ -z "$*" ]] ; then
+		echo "banning artist: ^${_SONG[artist]}"
+                echo "^${_SONG[artist]}" | escapeit >> /home/ono/.mpdskip/artistban.txt
+        else
+                echo "banning artist: $*"
+		echo "^$*" | escapeit >> /home/ono/.mpdskip/artistban.txt
+        fi
+        sort -u /home/ono/.mpdskip/artistban.txt -o /home/ono/.mpdskip/artistban.txt
+        /etc/myscripts/mpd/mpdskipper
+        exit
+fi
+
+
+
+#if its not christmas, no christmas music!
+christmastime_func(){
+if [ $DOY -ge 329 -a $DOY -le 360 ] ; then
+#if [ $DOY -ge 1 -a $DOY -le 366 ] ; then
+	_CUTLIST+=$(echo -e "\n\b")
+else
+	_CUTLIST+=$(echo -e "\n\b")
+        _CUTLIST+=$(cut -d $'\t' -f1,7 <<< "$_PLAYLIST" | grep -i "Christmas" | sed 's|$|\tmain:christ|')
+	_CUTLIST+=$(echo -e "\n\b")
+fi
+}
+
+#genre ban
+genreban_func(){
+if [ -e /home/ono/.mpdskip/genreban.txt ] ; then
+        _CUTLIST+=$(echo -e "\n\b")
+        _CUTLIST+=$(cut -d $'\t' -f1,7 <<< "$_PLAYLIST" | grep -f "/home/ono/.mpdskip/genreban.txt" | sed 's|$|\tmain:genre|')
+        _CUTLIST+=$(echo -e "\n\b")
+else
+        _CUTLIST+=$(echo -e "\n\b")
+fi
+}
+
+#album ban
+albumban_func(){
+if [ -e /home/ono/.mpdskip/albumban.txt ] ; then
+        _CUTLIST+=$(echo -e "\n\b")
+        _CUTLIST+=$(cut -d $'\t' -f3,7 <<< "$_PLAYLIST" | grep -f "/home/ono/.mpdskip/albumban.txt" | sed 's|$|\tmain:album|')
+        _CUTLIST+=$(echo -e "\n\b")
+else
+        _CUTLIST+=$(echo -e "\n\b")
+fi
+}
+
+#artist ban
+artistban_func(){
+if [ -e /home/ono/.mpdskip/artistban.txt ] ; then
+        _CUTLIST+=$(echo -e "\n\b")
+        _CUTLIST+=$(cut -d $'\t' -f2,7 <<< "$_PLAYLIST" | grep -f "/home/ono/.mpdskip/artistban.txt" | sed 's|$|\tmain:artist|')
+        _CUTLIST+=$(echo -e "\n\b")
+else
+        _CUTLIST+=$(echo -e "\n\b")
+fi
+}
+
+#string ban
+stringban_func(){
+if [ -e /home/ono/.mpdskip/stringban.txt ] ; then
+        _CUTLIST+=$(echo -e "\n\b")
+        _CUTLIST+=$(cut -d $'\t' -f5,7 <<< "$_PLAYLIST" | grep -f "/home/ono/.mpdskip/stringban.txt" | sed 's|$|\tmain:string|')
+        _CUTLIST+=$(echo -e "\n\b")
+else
+        _CUTLIST+=$(echo -e "\n\b")
+fi
+}
+
+###temporary ban
+tmpban_func(){
+if [ -e /home/ono/.mpdskip/tmpban.txt ] ; then
+        _CUTLIST+=$(echo -e "\n\b")
+	_CUTLIST+=$(cut -d $'\t' -f6,7 <<< $(grep -f /home/ono/.mpdskip/tmpban.txt <<< "$_PLAYLIST" | sed 's|$|\tmain:tmp|'))
+        _CUTLIST+=$(echo -e "\n\b")
+else
+        _CUTLIST+=$(echo -e "\n\b")
+fi
+}
+
+#directory ban
+directoryban_func(){
+if [ -e /home/ono/.mpdskip/dirban.txt ] ; then
+        _CUTLIST+=$(echo -e "\n\b")
+        _CUTLIST+=$(cut -d $'\t' -f6,7 <<< $(grep -f /home/ono/.mpdskip/dirban.txt <<< "$_PLAYLIST" | sed 's|$|\tmain:dir|'))
+        _CUTLIST+=$(echo -e "\n\b")
+else
+        _CUTLIST+=$(echo -e "\n\b")
+fi
+}
+
+#skip live
+skiplive_func(){
+if [[ $skiplive = 1 ]] ; then
+        _CUTLIST+=$(echo -e "\n\b")
+#	_CUTLIST+=$(cut -d $'\t' -f6,7 <<< $(grep "\[Live\]" <<< "$_PLAYLIST"))
+	_TMP=$(cut -d $'\t' -f6,7 <<< "$_PLAYLIST" | sed 's|$|\tmain:Live|')
+	_CUTLIST+=$(grep "\[Live\]" <<< "$_TMP")
+	_CUTLIST+=$(echo -e "\n\b")
+else
+        _CUTLIST+=$(echo -e "\n\b")
+fi
+}
+
+
+### Chop chop!
+cutlist_func(){
+
+_CUTLIST=$(echo "$_CUTLIST" | tr -d '\b' | sed '/^$/d')
+#echo "$_CUTLIST"
+_DATE=$(date)
+
+#log it
+if [ ! -z "$_CUTLIST" ] ; then echo "$_CUTLIST" | sed "s/^/$_DATE\t/g" >> /home/ono/.mpdskip/mpdskip.log ; fi
+
+#whitelist here:
+
+#cut to just tracks
+_CUTLIST=$(echo "$_CUTLIST" | cut -d $'\t' -f2 | sort -unr)
+
+if [[ $1 = --DEBUG ]] ; then DEBUG final: ; fi
+
+#to array
+_CUTLIST=($(echo "$_CUTLIST"))
+
+if [ ! -z "$_CUTLIST" ] ; then
+        for i in ${!_CUTLIST[@]} ; do
+		#echo "cutting: ${_CUTLIST[i]}"
+		mpc del "${_CUTLIST[i]}"
+        done
+fi
+}
+
+
+#main script
+_CUTLIST=$(grep -f /home/ono/.mpdskip/permban.txt <<< "$_PLAYLIST" | sed 's|$|\tmain:perm|')
+if [[ $1 = --DEBUG ]] ; then DEBUG permban: ; fi
+christmastime_func
+if [[ $1 = --DEBUG ]] ; then DEBUG christban: ; fi
+directoryban_func
+if [[ $1 = --DEBUG ]] ; then DEBUG dirban: ; fi
+genreban_func
+if [[ $1 = --DEBUG ]] ; then DEBUG genreban: ; fi
+tmpban_func
+if [[ $1 = --DEBUG ]] ; then DEBUG tempban: ; fi
+artistban_func
+if [[ $1 = --DEBUG ]] ; then DEBUG artistban: ; fi
+albumban_func
+if [[ $1 = --DEBUG ]] ; then DEBUG albumban: ; fi
+stringban_func
+if [[ $1 = --DEBUG ]] ; then DEBUG stringban: ; fi
+skiplive_func
+if [[ $1 = --DEBUG ]] ; then DEBUG skiplive: ; fi
+
+
+cutlist_func
+skipcurrent

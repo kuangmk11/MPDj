@@ -1,0 +1,167 @@
+#!/bin/bash
+#_DIR="/tmp/playlists/"
+_DIR="/storage/dd1/mp3/_PLAYLISTS/linux/"
+echo "removing bad prefix from playlists"
+sudo find "$_DIR" -type f -iname "*.m3u" -exec sed -i 's|/storage/dd1/mp3/||g' '{}' \;
+QUIET=$(mkdir /tmp/playlist.bak 2>&1 > /dev/null)
+
+###SINGLE FILE OR DEFAULT DIRECTORY
+if [ "$1" = -f ] ; then
+	shift
+	_LIST="$1"
+else
+	_LIST=$(find "$_DIR" -type f -iname "*.m3u")
+fi
+
+###READ LIST OF PLAYLISTS
+while read -r lline ; do
+	_ERRORS=0
+	if awk  '/\r$/{exit 0;} 1{exit 1;}' "$lline" ;then
+  		echo "is DOS"
+		dos2unix "$lline"
+	fi
+	_PLAYLIST=$(cat "$lline")
+	if echo "$_PLAYLIST" | grep -q "^#VERIFIED#$" ; then
+		((_ERRORS++))
+		printf "#"
+	elif [ "$lline" = "/storage/dd1/mp3/_PLAYLISTS/linux/ALL.lin.m3u" ] || [ "$lline" = "/storage/dd1/mp3/_PLAYLISTS/linux/all-tracks.m3u" ] || [ "$lline" = "/storage/dd1/mp3/_PLAYLISTS/linux/unknown-tracks.m3u" ] || [ "$lline" = "/storage/dd1/mp3/_PLAYLISTS/linux/mpdmela-all-tracks.m3u" ] ; then
+		echo "" && echo "Skipping: $lline"
+	else
+		echo "" && echo "Next is: $lline" && sleep 1
+		sed -i 's|/storage/work/mp3/||g' "$lline"
+		QUIET=$(rm "$lline.fix" 2>&1 > /dev/null)
+		###READ PLAYLIST
+		while read -r pline ; do
+			_REPLACEMENT=""
+			_REZ=""
+			###FILTER COMMENT LINES
+			if echo "$pline" | grep -q "^#" ; then
+				echo "$pline" >> "$lline.fix"
+			###FILTER BLANK LINES
+			elif [ -z "$pline" ] ; then
+				echo "$pline" >> "$lline.fix"
+			###TEST IF FILE EXISTS
+			else
+				TEST=$(ls "/storage/dd1/mp3/$pline" 2>&1 > /dev/null ; echo $?)
+				if [[ $TEST = 0 ]] ; then
+					printf "+"
+					echo "$pline" >> "$lline.fix"
+				else
+					#echo "$pline"
+					###ALPHA
+					if echo "$pline" | grep -q "^[A-Z1]" || echo "$pline" | grep -q "^_loved"; then
+						#echo "" && echo "ALPHA SEARCH"
+						_FILENAME=$(basename "/storage/dd1/mp3/$pline")
+						_ARTIST=$(echo "$_FILENAME" | sed 's| - |/|g' | cut -f1 -d/ | sed "s/'//g" | cut -f1 -d\; | tr -cd '[:alnum:][:space:]' | awk '{$1=$1};1')
+						_ALBUM=$(echo "$_FILENAME" | sed 's| - |/|g' | cut -f2 -d/ | sed "s/'//g" | tr -cd '[:alnum:][:space:]' | awk '{$1=$1};1')
+						_TRACK=$(echo "$_FILENAME" | sed 's| - |/|g' | cut -f3 -d/ | sed "s/'//g" | awk '{$1=$1};1')
+						_TITLE=$(echo "$_FILENAME" | sed 's| - |/|g' | cut -f4 -d/ | sed "s/'//g" | sed 's|\.mp3.*$||g' | sed 's/ *([^)]*)//g' | tr -cd '[:alnum:][:space:]' | awk '{$1=$1};1')
+
+						_REZ=$(mpc search artist "$_ARTIST" | grep -v "^_loved")
+
+						if [ ! -z "$_ARTIST" ] && [ ! -z "$_REZ" ] ; then
+							_REPLACEMENT=$(echo "$_REZ" | fzf -i -1 --query="$_ALBUM - $_TRACK - $_TITLE")
+						else
+							_PATH=$(dirname "/storage/dd1/mp3/$pline")
+							_REZ=$(find "$_PATH" -type f -iname "*.mp3")
+							if [ -z "$_REZ" ] ; then
+								_PATH=$(dirname "$_PATH")
+								_REZ=$(find "$_PATH" -type f -iname "*.mp3")
+							fi
+							if [ ! -z "$_REZ" ] ; then
+								_NEFN="${_FILENAME%.*}"
+								_REPLACEMENT=$(echo "$_REZ" | fzf -i -1 --query="$_NEFN")
+							else
+								_REPLACEMENT=$(mpc search title "$_TITLE" | fzf -i -1 --query="$_TRACK - $_TITLE")
+							fi
+						fi
+						if [ ! -z "$_REPLACEMENT" ] ; then
+							#printf "****found*****\n"
+							printf "*"
+							echo "#$pline" >> "$lline.fix"
+							echo "$_REPLACEMENT" >> "$lline.fix"
+						else
+	                                                ((_ERRORS++))
+							echo "MISSING - $pline" && sleep 1
+							echo "#MISSING" >> "$lline.fix"
+							echo "$pline" >> "$lline.fix"
+						fi
+					### stream url
+					elif echo "$pline" | grep -iq "^http" ; then
+						echo "$pline" >> "$lline.fix"
+					###DARKWAVE.RADIO grabs
+					elif echo "$pline" | grep -q ^_Dark ; then
+						#echo "" && echo "DW SEARCH"
+						_REPLACEMENT=$(find /storage/dd1/mp3/_Darkwave.Radio/ -type f -iname "*.mp3" | fzf -i -1 --query="$pline")
+						if [ ! -z "$_REPLACEMENT" ] ; then
+							#printf "****found*****\n"
+							printf "*"
+							echo "#$pline" >> "$lline.fix"
+							echo "$_REPLACEMENT" | sed 's|/storage/dd1/mp3/||g' >> "$lline.fix"
+						else
+							((_ERRORS++))
+							echo "MISSING - $pline" && sleep 1
+							echo "#MISSING" >> "$lline.fix"
+							echo "$pline" >> "$lline.fix"
+						fi
+					###VARIOUS AND SOUNDTRACK
+					elif echo "$pline" | grep -q ^_[VS]  ; then
+						#echo "" && echo "V+S SEARCH"
+
+						_FILENAME=$(basename "/storage/dd1/mp3/$pline")
+						_ARTIST=$(echo "$_FILENAME" | sed 's| - |/|g' | cut -f3 -d/ | sed "s/'//g" | sed 's/[ÿ]//g ' | cut -f1 -d\; | tr -cd '[:alnum:][:space:]' | awk '{$1=$1};1')
+						_ALBUM=$(echo "$_FILENAME" | sed 's| - |/|g' | cut -f1 -d/ | sed "s/'//g" | tr -cd '[:alnum:][:space:]' | awk '{$1=$1};1')
+						_TRACK=$(echo "$_FILENAME" | sed 's| - |/|g' | cut -f2 -d/ | sed "s/'//g" | awk '{$1=$1};1')
+						_TITLE=$(echo "$_FILENAME" | sed 's| - |/|g' | cut -f4 -d/ | sed "s/'//g" | sed 's|\.mp3.*$||g' | tr -cd '[:alnum:][:space:]' | awk '{$1=$1};1')
+						_REZ=$(mpc search artist "$_ARTIST" | grep -v "^_loved")
+
+						if [ ! -z "$_ARTIST" ] && [ ! -z "$_REZ" ] ; then
+							_REPLACEMENT=$(echo "$_REZ" | fzf -i -1 --query="$_ALBUM - $_TRACK - $_TITLE")
+						else
+							_PATH=$(dirname "/storage/dd1/mp3/$pline")
+							_REZ=$(find "$_PATH" -type f -iname "*.mp3")
+							####UNCOMMENTING THIS WOULD SEARCH WHOLE VA or ST dir
+							#if [ -z "$_REZ" ] ; then
+							#	_PATH=$(dirname "$_PATH")
+							#	_REZ=$(find "$_PATH" -type f -iname "*.mp3")
+							#fi
+							if [ ! -z "$_REZ" ] ; then
+								_NEFN="${_FILENAME%.*}"
+								_NEFN=$(echo "$_NEFN" | tr -cd '[:alnum:][:space:]' | awk '{$1=$1};1')
+								_REPLACEMENT=$(echo "$_REZ" | fzf -i -1 --query="$_NEFN")
+							fi
+						fi
+
+						###
+						#_REPLACEMENT=$(mpc search artist "$_ARTIST" | grep -v "^_loved" | fzf -i -1 --query="$_ALBUM - $_TITLE - $_TRACK")
+	                                        if [ ! -z "$_REPLACEMENT" ] ; then
+	                                                #printf "****found*****\n"
+	                                                printf "*"
+							echo "#$pline" >> "$lline.fix"
+	                                                echo "$_REPLACEMENT" | sed 's|/storage/dd1/mp3/||g' >> "$lline.fix"
+	                                        else
+	                                                ((_ERRORS++))
+							echo "MISSING - $pline" && sleep 1
+	                                                echo "#MISSING" >> "$lline.fix"
+	                                                echo "$pline" >> "$lline.fix"
+	                                        fi
+					###UNHANDLED
+					else
+						((_ERRORS++))
+						echo "" && echo "could not check: $pline"
+						echo "$pline" >> "$lline.fix"
+					fi
+				fi
+			fi
+		done <<< "$_PLAYLIST"
+		if [[ $_ERRORS = 0 ]] ; then
+			echo "" && echo "VERIFIED"
+			sed -i '1i#VERIFIED#' "$lline.fix"
+			_PLISTNAME=$(basename "$lline")
+			cp "$lline" "/tmp/playlist.bak/`date +%s`$_PLISTNAME" && mv "$lline.fix" "$lline" && echo "SAVED CHANGES, backup in /tmp/playlist.bak"
+		else
+			echo "" && echo "ERRORS ENCOUNTERED -- NOT SAVING CHANGES" && echo "$lline" && echo "" && sleep 1
+		fi
+	fi
+done <<< "$_LIST"
+echo ""

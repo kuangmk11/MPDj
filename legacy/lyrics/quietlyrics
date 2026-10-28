@@ -1,0 +1,65 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+
+#don't run if ncmpc is already running
+#if pgrep --exact ncmpc &>/dev/null; then
+#	exit 0
+#fi
+source /etc/myscripts/mpd/lyrics/variables
+
+if grep -q '^Updating DB' <<< "$_ARTIST"; then
+        echo found db
+        exit
+fi
+if grep -q "^volume:" <<< "$_ARTIST"; then
+        echo found vol
+        exit
+fi
+
+
+if [ -s "$lrc_LYRFILE" ] ; then
+	exit 0
+elif [ -s "$_LYRFILE" ] ; then
+	chmod 777 "$_LYRFILE" >/dev/null 2>&1
+	exit 0
+else
+	_LYRICS=$(wget -qO- "$_URL" | sed '/./,$!d')
+	if [ "$_LYRICS" != "$_SRY" ]; then
+        	mkdir "$_LYRPATH" >/dev/null 2>&1
+		echo "$_LYRICS" > "$_LYRFILE"
+        	#eyeD3 --lyrics=eng:Lyrics:"$_LYRICS" "$_FILE" 1>/dev/null
+	else
+        	ruby /etc/myscripts/mpd/lyrics/.support/20-lyricwiki.rb "$_ARTIST" "$_TITLE" 2> /dev/null >> "$_file"
+        	if [ -s "$_file" ] ; then
+                	mkdir "$_LYRPATH" >> /dev/null 2>&1
+                	sed -i "s/&#8217;/'/" "$_file"
+                	sed -i "s#<b>##" "$_file"
+                	sed -i "s#<i>##" "$_file"
+                	sed -i "s#</b>##" "$_file"
+                	sed -i "s#</i>##" "$_file"
+                	sed -i "s|script>|'$'\n|gi" "$_file"
+                	sed -i '/showAsyncAd/d' "$_file"
+			cat "$_file" > "$_LYRFILE"
+			#tail -n +2 "$_file" > "$_LYRFILE"
+        	else
+                	touch "$_file"
+        	fi
+	fi
+fi
+minimumsize=2
+actualsize=$(wc -c "$_LYRFILE" | cut -f 1 -d ' ')
+if [ $actualsize -ge $minimumsize ]; then
+        touch "$_LYRFILE"
+else
+        rm "$_LYRFILE"
+fi
+if [ -s "$_LYRFILE" ] ; then
+	chmod 777 "$_LYRFILE" >/dev/null 2>&1
+        rm "$_file" >/dev/null 2>&1
+	exit 0
+else
+        echo "$_ARTIST - $_TITLE" >> /var/log/lyrics.log
+        sort -u /var/log/lyrics.log -o /var/log/lyrics.log
+	rm "$_file" >/dev/null 2>&1
+	exit 1
+fi

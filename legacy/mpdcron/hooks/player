@@ -1,0 +1,32 @@
+#!/bin/bash
+# vim: set sw=4 et sts=4 tw=80 :
+# Copyright 2009 Ali Polatel <alip@exherbo.org>
+# Distributed under the terms of the GNU General Public License v2
+
+# Example player hook.
+#hooks/dump-status.bash
+#hooks/dump-song.bash
+
+LOCKFILE=/tmp/lock.txt
+if [ -e ${LOCKFILE} ] && kill -0 `cat ${LOCKFILE}`; then
+    echo "already running"
+    exit
+fi
+
+# make sure the lockfile is removed when we exit and then claim it
+trap "rm -f ${LOCKFILE}; exit" INT TERM EXIT
+echo $$ > ${LOCKFILE}
+
+#bash /etc/myscripts/mpd/lyrics/quietlyrics
+#hooks/growl.bash
+#_VARS=$(hooks/dump-vars.bash | sed "s|'||g" | sed "s|###|'|g")
+#echo "$_VARS" > /var/www/admin/vars.php
+#bash /etc/myscripts/mpd/mpd-fetcher
+#bash /etc/myscripts/mpd/lyrics/ultimate-guitar-quiet
+#bash /etc/myscripts/mpd/lyrics/ultimate-guitar-bass-quiet
+#bash /etc/myscripts/mpd/lyrics/last-fm-bio >/dev/null 2>&1
+#does not work creates blank text file in _lyrics dir...
+#bash /etc/myscripts/mpd/lyrics/lyrics-fetcher.sh -p >/dev/null 2>&1
+sleep 5
+rm -f ${LOCKFILE}
+rm /tmp/lock.txt > /dev/null 2>&1

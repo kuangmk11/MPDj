@@ -1,0 +1,28 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+escapeit(){
+sed 's|\[|\\[|g' | sed 's|\]|\\]|g' | sed 's|\.|\\.|g' | sed 's|\$|\\$|g'
+}
+
+
+if [[ $1 = --update ]] ; then
+	cat /tmp/ratios.txt | escapeit > /home/ono/.cleanhouse/ratios.txt
+	exit
+fi
+
+
+IFS=$'\n\b'
+if [[ $1 = --all ]] ; then
+	_LIST=($(cat /tmp/ratios.txt | sort -r | sed -r 's|^[0-9]+\.[0-9]+\:||'))
+else
+	_LIST=($(cat /tmp/ratios.txt | grep -vf /home/ono/.cleanhouse/ratios.txt | sort -r | sed -r 's|^[0-9]+\.[0-9]+\:||'))
+fi
+
+tally=${#_LIST[@]}
+for i in ${!_LIST[@]} ; do
+	mkdir "$(dirname ${_LIST[i]})/scans" >/dev/null 2>&1
+	echo "${_LIST[i]} "$red"$tally to go"$reset
+	((tally--))
+	cp "${_LIST[i]}" "$(dirname ${_LIST[i]})/scans/folder.bak.jpg"
+	display "${_LIST[i]}"
+done

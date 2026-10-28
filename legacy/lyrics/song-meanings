@@ -1,0 +1,29 @@
+#!/bin/bash
+#songmeanings.com/query/?query=Asylum Party Julia&type=songtitles
+source /etc/myscripts/colors.sh
+
+_SM="http://www.songmeanings.com/query/?query="
+if [[ $1 = -p ]] ; then
+        source /etc/myscripts/mpd/lyrics/variables
+        echo "using currently playing track"
+else
+        _ARTIST="$1"
+        _TITLE="$2"
+fi
+
+_ARTIST=${_ARTIST//ü/ue}
+_ARTIST=${_ARTIST//ÿ/y}
+
+_URL="$_SM$_ARTIST $_TITLE&type=songtitles"
+
+_SEARCH=$(wget -qO- "$_URL")
+if grep -iq "title=\"$_TITLE\">$_TITLE" <<< "$_SEARCH" ; then
+	_URL=$(grep -i "title=\"$_TITLE\">$_TITLE" <<< "$_SEARCH" | sed -r 's|^.+href="||' | sed -r 's|" title=".+$||')
+	_SEARCH=$(wget -qO- "$_URL")
+	#<a style="" class="" href="http://songmeanings.com/songs/view/3530822107858883335/" title="Winter">Winter</a>                          </td>
+fi
+_SEARCH=$(echo "$_SEARCH" | sed -nr "/lyric-box/,\$p" | sed "/div style=/q" | sed 's|<br/*>||g' | sed -r 's|^\s+||g' | sed -r 's|<.+>||g' | sed '/./,$!d' | recode html..utf8)
+if grep -q "We are currently missing these lyrics." <<< "$_SEARCH" ; then
+	_SEARCH=""
+fi
+echo "$_SEARCH"

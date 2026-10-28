@@ -1,0 +1,14 @@
+#!/bin/bash
+_LIST=$(cat /tmp/playlists/_not-found | sort -u)
+
+while read -r line ; do
+	if [[ ! -z $line ]] ; then
+		_URL=$(google-cli -C "site:youtube.com $line" --np | grep "https:" | head -n1)
+		echo "$_URL"
+		if [[ -z $_URL ]] ; then
+			echo "no hit on: $line"
+		else
+			youtube-dl "$_URL" -x --audio-format mp3
+		fi
+	fi
+done <<< "$_LIST"

@@ -1,0 +1,11 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+_genre=$(mpc current -f %genre%)
+if [ -z "$_genre" ] ; then
+	echo nothing playing
+	exit
+fi
+mpc crop
+genre -a "$_genre"
+mpc del $(mpc playlist -f "%artist% %title% ¥%position%" | grep "$_artist $_title" | head -2 | tail -1 | sed -r "s/.+¥//")
+mpc shuffle

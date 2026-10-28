@@ -1,0 +1,10 @@
+#!/bin/bash
+while read f; do
+    	if echo $f | grep -q ^# ; then
+		echo $f > /dev/null
+	else
+		if [ ! -e "/storage/dd1/mp3/$f" ] ; then
+			echo "$f: does not exist"
+		fi
+	fi
+done < "$1"

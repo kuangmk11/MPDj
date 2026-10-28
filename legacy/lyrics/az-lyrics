@@ -1,0 +1,29 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+
+_METRO="http://www.azlyrics.com/lyrics/"
+_USERAGENT='--header="Accept: text/html" --user-agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:21.0) Gecko/20100101 Firefox/21.0"'
+if [[ $1 = -p ]] ; then
+	source /etc/myscripts/mpd/lyrics/variables
+	echo "using currently playing track"
+else
+	_ARTIST="$1"
+	_TITLE="$2"
+fi
+
+_ARTIST=${_ARTIST//ü/ue}
+_ARTIST=${_ARTIST//ÿ/y}
+
+_URL="$_METRO$_ARTIST/$_TITLE.html"
+_URL=${_URL// /}
+echo "$_URL"
+
+
+_SEARCH=$(lynx -dump "$_URL" | tail -n+15 | sed '/Submit Corrections/,$ d' )
+if echo "$_SEARCH" | grep -q 'http://www.requestlyrics.com/'; then
+	exit
+else
+	#_SEARCH=$(lynx -dump "$_URL" )
+	echo "$_SEARCH"
+	#echo "$_SEARCH" > /tmp/search
+fi

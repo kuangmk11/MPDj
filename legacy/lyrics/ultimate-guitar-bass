@@ -1,0 +1,228 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+
+_UG="http://tabs.ultimate-guitar.com"
+_DATE=$(date +%s | sed 's| ||g')
+_SEARCH=""
+#Search limit 2592000=30 days
+_TAB_AGE_LIMIT='2592000'
+
+if [[ -z $* ]] ; then
+	echo "no arguments passed"
+	exit
+fi
+
+if [[ $1 = -c ]] ; then
+	source /etc/myscripts/mpd/lyrics/variables
+	echo "Choose TAB"
+        IFS=$(echo -en "\n\b")
+	_suggest=($(find "$_TABPATH" | grep "$_PATH_TITLE-BASS-ver" ))
+        _length=${#_suggest[@]}
+        menu() {
+        	for i in ${!_suggest[@]}; do
+                           printf "%3d%s) %s\n" $((i+1)) "${choices[i]:- }" "${_suggest[i]}"
+                done
+                [[ "$msg" ]] && echo "$msg"; :
+       	}
+        prompt=$yellow"Check a selection (again to uncheck, ENTER when done): "$reset   ###CHANGE FOR ONE SELECTION ONLY
+        while menu && read -rp "$prompt" num && [[ "$num" ]]; do
+		[[ "$num" != *[![:digit:]]* ]] &&
+                	(( num > 0 && num <= ${#_suggest[@]} )) ||
+                        { msg=$red"Invalid option: $num"$reset; continue; }
+                        ((num--)); msg=$cyan"${_suggest[num]} was ${choices[num]:+un}checked"$reset
+                [[ "${choices[num]}" ]] && choices[num]="" || choices[num]="+"
+        done
+        _c=""
+        for i in ${!_suggest[@]}; do
+        	[[ "${choices[i]}" ]] && _c="1" ;
+        done
+        if [[ ! -z $_c ]] ; then
+        	for i in ${!_suggest[@]}; do
+                	if [[ "${choices[i]}" ]] ; then
+				nano "${_suggest[i]}"
+				read -p "Do you wish to relink the default tab to this one? Y/n" -n 1 -r
+				echo    # (optional) move to a new line
+				if [[ $REPLY =~ ^[Yy]$ ]] ; then
+    					rm "$_BTABFILE.txt" >/dev/null 2>&1
+					ln -s "${_suggest[i]}" "$_BTABFILE.txt"
+				fi
+			fi
+                done
+        else
+        	echo -e $red"\nYou selected nothing.\n"$reset
+        fi
+	exit
+fi
+
+if [[ $1 = -p ]] ; then
+	source /etc/myscripts/mpd/lyrics/variables
+	echo $yellow"using currently playing track"$reset
+elif [[ $1 = -e ]] ; then
+	source /etc/myscripts/mpd/lyrics/variables
+        echo $yellow"using currently playing track"$reset
+        if [ -s "$_BTABFILE.txt" ] ; then
+                nano "$_BTABFILE.txt"
+        else
+                echo "No Tab Found"
+                mkdir "$_BTABPATH"
+                nano "$_BTABFILE-verU.txt"
+                if [ -s "$_BTABFILE-verU.txt" ] ; then
+                        ln -s "$_BTABFILE-verU.txt" "$_BTABFILE.txt"
+                        exit
+                else
+                        rm "$_BTABFILE-verU.txt" >/dev/null 2>&1
+                        rmdir "$_BTABPATH" >/dev/null 2>&1
+                        exit
+                fi
+        fi
+        exit
+else
+	_ARTIST="$1"
+	_TITLE="$2"
+fi
+if [[ -s "$_BTABFILE-ver0.txt" ]] ; then
+	echo $green"Local File"$reset
+	cat "$_BTABFILE.txt"
+else
+	_ARTIST=${_ARTIST//ü/u}
+	_ARTIST=${_ARTIST//ÿ/y}
+	_ARTIST=$(echo "$_ARTIST" | sed -r 's|^the\s||')
+	_ARTIST=${_ARTIST//[\"\'+=.,]}
+	_TITLE=${_TITLE//:/-}
+	_TITLE=${_TITLE//-/ }
+	_TITLE=${_TITLE//[\"\'+=.,]}
+	_INI=$(echo "$_ARTIST" | cut -c1-1 | sed -r 's|^[0-9]|1|' )
+	_URL="$_UG/$_INI/$_ARTIST/$_TITLE btab.htm"
+	_URL=${_URL// /_}
+	_URL=${_URL//__/_}
+	echo "checking for ver 0 bass tab"
+	echo "$_URL"
+	if grep -q "$_URL" ~/.UG-checked-urls.txt; then
+		_CK_DATE=$(grep -a "$_URL" ~/.UG-checked-urls.txt | tail -1 | sed -r 's|\shttp.+||' | sed 's| ||g' )
+		_TAB_AGE=$(( $_DATE - $_CK_DATE ))
+		if [[ $_TAB_AGE -gt $_TAB_AGE_LIMIT ]]; then
+			echo $yellow"UG check out of date"$reset
+			_SAFE_URL=$(printf '%s\n' "$_URL" | sed 's/[[\.*^$/]/\\&/g')
+			sed -i "/$_SAFE_URL/d" ~/.UG-checked-urls.txt
+			_SEARCH=$(wget -qO- "$_URL" )
+		else
+        		echo $yellow"Tried that URL lately and found nothing"$reset
+		fi
+	else
+		_SEARCH=$(wget -qO- "$_URL" )
+	fi
+	echo "$_DATE $_URL" >> ~/.UG-checked-urls.txt
+	if [[ ! -z "$_SEARCH" ]] ; then
+		_SEARCH=$(echo "$_SEARCH" | sed -nr '/<pre><i><\/i>/,$p'| sed '/<\/pre>/q' | sed 's|</pre>||g' | sed 's|<div class="fb-meta">||' | sed -r 's|^\s*<pre><i></i>||' | sed 's|&amp;|&|g' )
+		mkdir "$_TABPATH" >/dev/null 2>&1
+		echo "$_SEARCH" > "$_BTABFILE-ver0.txt"
+		rm "$_BTABFILE.txt" >/dev/null 2>&1
+		ln -s "$_BTABFILE-ver0.txt" "$_BTABFILE.txt"
+		_URL="$_UG/$_INI/$_ARTIST/$_TITLE ver1 btab.htm"
+		_URL=${_URL// /_}
+		_URL=${_URL//__/_}
+		curl -s --head "$_URL" | head -n 1 | grep "HTTP/1.[01] [23].." > /dev/null
+		if [[ "$?" = 0 ]] ; then
+			echo "got some"
+			_SEARCH=$(wget -qO- "$_URL" | sed -nr '/<pre><i><\/i>/,$p'| sed '/<\/pre>/q' | sed 's|</pre>||g' | sed 's|<div class="fb-meta">||' | sed -r 's|^\s*<pre><i></i>||')
+			echo "$_SEARCH" > "$_BTABFILE-ver1.txt"
+			rm "$_BTABFILE.txt" >/dev/null 2>&1
+			ln -s "$_BTABFILE-ver1.txt" "$_BTABFILE.txt"
+	                _URL="$_UG/$_INI/$_ARTIST/$_TITLE ver2 btab.htm"
+        	        _URL=${_URL// /_}
+			_URL=${_URL//__/_}
+                	curl -s --head "$_URL" | head -n 1 | grep "HTTP/1.[01] [23].." > /dev/null
+                	if [[ "$?" = 0 ]] ; then
+                        	echo "got some"
+                        	_SEARCH=$(wget -qO- "$_URL" | sed -nr '/<pre><i><\/i>/,$p'| sed '/<\/pre>/q' | sed 's|</pre>||g' | sed 's|<div class="fb-meta">||' | sed -r 's|^\s*<pre><i></i>||')
+				echo "$_SEARCH" > "$_BTABFILE-ver2.txt"
+				rm "$_BTABFILE.txt" >/dev/null 2>&1
+				ln -s "$_BTABFILE-ver2.txt" "$_BTABFILE.txt"
+	                        _URL="$_UG/$_INI/$_ARTIST/$_TITLE ver3 btab.htm"
+        	                _URL=${_URL// /_}
+				_URL=${_URL//__/_}
+                	        curl -s --head "$_URL" | head -n 1 | grep "HTTP/1.[01] [23].." > /dev/null
+                        	if [[ "$?" = 0 ]] ; then
+					echo "got some"
+	                                _SEARCH=$(wget -qO- "$_URL" | sed -nr '/<pre><i><\/i>/,$p'| sed '/<\/pre>/q' | sed 's|</pre>||g' | sed 's|<div class="fb-meta">||' | sed -r 's|^\s*<pre><i></i>||')
+        	                        echo "$_SEARCH" > "$_BTABFILE-ver3.txt"
+					rm "$_BTABFILE.txt" >/dev/null 2>&1
+					ln -s "$_BTABFILE-ver3.txt" "$_BTABFILE.txt"
+                	                _URL="$_UG/$_INI/$_ARTIST/$_TITLE ver4 btab.htm"
+                        	        _URL=${_URL// /_}
+					_URL=${_URL//__/_}
+                                	curl -s --head "$_URL" | head -n 1 | grep "HTTP/1.[01] [23].." > /dev/null
+                                	if [[ "$?" = 0 ]] ; then
+						echo "got some"
+                                        	_SEARCH=$(wget -qO- "$_URL" | sed -nr '/<pre><i><\/i>/,$p'| sed '/<\/pre>/q' | sed 's|</pre>||g' | sed 's|<div class="fb-meta">||' | sed -r 's|^\s*<pre><i></i>||')
+                                	       	echo "$_SEARCH" > "$_BTABFILE-ver4.txt"
+						rm "$_BTABFILE.txt" >/dev/null 2>&1
+						ln -s "$_BTABFILE-ver4.txt" "$_BTABFILE.txt"
+                                        	_URL="$_UG/$_INI/$_ARTIST/$_TITLE ver5 btab.htm"
+                                        	_URL=${_URL// /_}
+						_URL=${_URL//__/_}
+                                        	curl -s --head "$_URL" | head -n 1 | grep "HTTP/1.[01] [23].." > /dev/null
+                                        	if [[ "$?" = 0 ]] ; then
+							echo "got some"
+        	                                        _SEARCH=$(wget -qO- "$_URL" | sed -nr '/<pre><i><\/i>/,$p'| sed '/<\/pre>/q' | sed 's|</pre>||g' | sed 's|<div class="fb-meta">||' | sed -r 's|^\s*<pre><i></i>||')
+                	                                echo "$_SEARCH" > "$_BTABFILE-ver5.txt"
+							rm "$_BTABFILE.txt" >/dev/null 2>&1
+							ln -s "$_BTABFILE-ver5.txt" "$_BTABFILE.txt"
+                        	                        _URL="$_UG/$_INI/$_ARTIST/$_TITLE ver6 btab.htm"
+                                	                _URL=${_URL// /_}
+							_URL=${_URL//__/_}
+                                        	        curl -s --head "$_URL" | head -n 1 | grep "HTTP/1.[01] [23].." > /dev/null
+                                                	if [[ "$?" = 0 ]] ; then
+								echo "got some"
+        	                                      	 	_SEARCH=$(wget -qO- "$_URL" | sed -nr '/<pre><i><\/i>/,$p'| sed '/<\/pre>/q' | sed 's|</pre>||g' | sed 's|<div class="fb-meta">||' | sed -r 's|^\s*<pre><i></i>||')
+                	                                 	echo "$_SEARCH" > "$_BTABFILE-ver6.txt"
+								rm "$_BTABFILE.txt" >/dev/null 2>&1
+								ln -s "$_BTABFILE-ver6.txt" "$_BTABFILE.txt"
+                        	                        	_URL="$_UG/$_INI/$_ARTIST/$_TITLE ver7 btab.htm"
+                                	                	_URL=${_URL// /_}
+								_URL=${_URL//__/_}
+                                        	        	curl -s --head "$_URL" | head -n 1 | grep "HTTP/1.[01] [23].." > /dev/null
+                                                		if [[ "$?" = 0 ]] ; then
+									echo "got some"
+		        	                                        _SEARCH=$(wget -qO- "$_URL" | sed -nr '/<pre><i><\/i>/,$p'| sed '/<\/pre>/q' | sed 's|</pre>||g' | sed 's|<div class="fb-meta">||' | sed -r 's|^\s*<pre><i></i>||')
+                        			                        echo "$_SEARCH" > "$_BTABFILE-ver7.txt"
+									rm "$_BTABFILE.txt" >/dev/null 2>&1
+									ln -s "$_BTABFILE-ver7.txt" "$_BTABFILE.txt"
+                        			                        _URL="$_UG/$_INI/$_ARTIST/$_TITLE ver8 btab.htm"
+                                        			        _URL=${_URL// /_}
+									_URL=${_URL//__/_}
+                                                			curl -s --head "$_URL" | head -n 1 | grep "HTTP/1.[01] [23].." > /dev/null
+                                                			if [[ "$?" = 0 ]] ; then
+										echo "got some"
+	                                                                        _SEARCH=$(wget -qO- "$_URL" | sed -nr '/<pre><i><\/i>/,$p'| sed '/<\/pre>/q' | sed 's|</pre>||g' | sed 's|<div class="fb-meta">||' | sed -r 's|^\s*<pre><i></i>||')
+        	                                                                echo "$_SEARCH" > "$_BTABFILE-ver8.txt"
+										rm "$_BTABFILE.txt" >/dev/null 2>&1
+										ln -s "$_BTABFILE-ver8.txt" "$_BTABFILE.txt"
+                	                                                        _URL="$_UG/$_INI/$_ARTIST/$_TITLE ver9 btab.htm"
+                        	                                                _URL=${_URL// /_}
+										_URL=${_URL//__/_}
+                                	                                        curl -s --head "$_URL" | head -n 1 | grep "HTTP/1.[01] [23].." > /dev/null
+                                        	                                if [[ "$?" = 0 ]] ; then
+											 echo "got some"
+	                                                                                _SEARCH=$(wget -qO- "$_URL" | sed -nr '/<pre><i><\/i>/,$p'| sed '/<\/pre>/q' | sed 's|</pre>||g' | sed 's|<div class="fb-meta">||' | sed -r 's|^\s*<pre><i></i>||')
+        	                                                                        echo "$_SEARCH" > "$_BTABFILE-ver9.txt"
+											rm "$_BTABFILE.txt" >/dev/null 2>&1
+											ln -s "$_BTABFILE-ver9.txt" "$_BTABFILE.txt"
+                	                                                                #_URL="$_UG/$_INI/$_ARTIST/$_TITLE ver10 btab.htm"
+                        	                                                        #_URL=${_URL// /_}
+											#_URL=${_URL//__/_}
+                                	                                                #curl -s --head "$_URL" | head -n 1 | grep "HTTP/1.[01] [23].." > /dev/null
+                                        	                                        #if [[ "$?" = 0 ]] ; then
+										fi
+									fi
+								fi
+							fi
+						fi
+					fi
+				fi
+			fi
+		fi
+		echo "$_SEARCH"
+	fi
+	sort -u ~/.UG-checked-urls.txt -o ~/.UG-checked-urls.txt 
+fi

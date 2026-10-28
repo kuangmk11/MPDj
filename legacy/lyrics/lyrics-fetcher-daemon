@@ -1,0 +1,24 @@
+#!/bin/bash
+export TERM="putty-256color"
+source /etc/myscripts/colors.sh
+
+while :
+do
+	if grep -q "Connection refused" <<< $(mpc current --wait 2>&1)  ; then
+		echo sleeping
+		sleep 60
+	else
+		/etc/myscripts/mpd/mpdskipper
+		if [ $? -eq 0 ] ; then
+			echo fetching
+			/etc/myscripts/mpd/lyrics/growl.bash
+			/etc/myscripts/mpd/mpd-fetcher
+			/etc/myscripts/mpd/lyrics/ultimate-guitar-quiet
+			/etc/myscripts/mpd/lyrics/ultimate-guitar-bass-quiet
+			/etc/myscripts/mpd/lyrics/last-fm-bio >/dev/null 2>&1
+
+			/etc/myscripts/mpd/lyrics/lyrics-fetcher.sh -p >/tmp/wrap 2>&1
+			echo done
+		fi
+	fi
+done

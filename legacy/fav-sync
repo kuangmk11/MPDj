@@ -1,0 +1,36 @@
+#!/bin/bash
+
+_STICKER=$(mpc sticker "" find rating = 10 | sed 's|\: rating=10$||g')
+while read -r _line ; do
+	echo "$_line"
+	if grep -iq "$_line" "/storage/dd1/mp3/_PLAYLISTS/linux/loved-master.lin.m3u" ; then
+		printf -
+	else
+ 		#echo "" && love -f "$_line"
+		echo "" && eyeD3 --quiet --user-text-frame MYRATING:5 "/storage/dd1/mp3/$_line"
+	fi
+done <<< "$_STICKER"
+
+
+_LIST=$(cat /storage/dd1/mp3/_PLAYLISTS/linux/loved-master.lin.m3u | sort -u)
+if [ -z "$_LIST" ] ; then
+	echo "no playlist specified"
+	exit
+fi
+#echo "$_LIST"
+
+while read -r _line ; do
+	#echo "$_line"
+	printf +
+	if echo "$_line" | grep -q "^#" ; then
+		printf "#"
+	elif [ -z "$_line" ] ; then
+		printf " "
+	else
+		mpc sticker "$_line" set rating 10 2>&1 > /dev/null
+		if [ $? = 1 ] ; then
+			echo "" && echo "ERROR: $_line"
+		fi
+	fi
+#done < "$*"
+done <<< "$_LIST"

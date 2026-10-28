@@ -1,0 +1,112 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+_API_KEY=REDACTED_LASTFM_API_KEY
+_XML_LVD="http://ws.audioscrobbler.com/2.0/?method=user.getlovedtracks&user=kuangmk11&limit=1000&api_key=$_API_KEY"
+_PLAYLIST=/tmp/playlist.m3u
+_MASTER=/storage/dd1/mp3/_PLAYLISTS/linux/loved-master.lin.m3u
+
+rm /tmp/LVD > /dev/null 2>&1
+rm /tmp/FAIL > /dev/null 2>&1
+rm "$_PLAYLIST" > /dev/null 2>&1
+
+
+wget -q "$_XML_LVD" -O /tmp/LVD
+_LVD=$(cat /tmp/LVD)
+
+if echo "$_LVD" | grep -q '<lfm status="ok">'; then
+	echo "LFM response OK"
+else
+	echo "LFM error"
+fi
+
+IFS="
+"
+
+function ADD_TRACKS {
+	echo "Searching Database...$yellow"
+	_ADDED=$(mpc search artist "${_ARTIST[i]}" title "${_TRACK[i]}" | tee -a "$_PLAYLIST")
+	echo "$_ADDED"
+	if [ -z $_ADDED ] ; then
+		#echo "$red	FAIL for ${_ARTIST[i]} - ${_TRACK[i]} $reset" | tee -a /tmp/FAIL
+		_ADDED=$(mpc search title "${_TRACK[i]}" | tee -a "$_PLAYLIST")
+		if [ -z $_ADDED ] ; then
+			_T=$(echo ${_TRACK[i]} | sed 's|_||g')
+			_ADDED=$(mpc search title "${_TRACK[i]}" | tee -a "$_PLAYLIST")
+			if [ -z $_ADDED ] ; then
+                		echo "$red     FAIL for ${_ARTIST[i]} - ${_TRACK[i]} $reset" | tee -a /tmp/FAIL
+				sleep 1
+			fi
+		fi
+	else
+		echo "$_ADDED"
+	fi
+	echo "$reset"
+	}
+sed -i 's|:Of the Wand & the Moon:|Of the Wand|g' /tmp/LVD
+sed -i 's|Zero Le Crêche|Zero LeCrêche|g' /tmp/LVD
+sed -i 's|Flowers &amp; Fire|Flowers and Fire|g' /tmp/LVD
+
+_TRACK=($(cat /tmp/LVD | xml_grep '//lovedtracks/track/name' --text_only | sed "s/'/_/g" | sed 's/?//g' | sed 's/\[.*\]//g' | sed 's/[Üü]/u/g' | sed 's/\://g' | sed 's/&amp;/&/g'))
+_ARTIST=($(cat /tmp/LVD | xml_grep '//lovedtracks/track/artist/name' --text_only | sed "s/'/_/g" | sed 's/?//g' | sed 's/\[.*\]//g' | sed 's/[Üü]/u/g' | sed 's/\://g' | sed 's/&amp;/&/g'))
+
+echo "PROCESSING...."
+for i in "${!_TRACK[@]}" ; do
+	echo "searching for $green${_ARTIST[i]} - ${_TRACK[i]}$reset in master playlist"
+        _TEST=$(grep -i "${_ARTIST[i]}" "$_MASTER" | grep -i "${_TRACK[i]}")
+        if [[ ! -z $_TEST ]] ; then
+		echo "grep found $_TEST"
+		for line in $(echo "$_TEST") ; do
+                	if [ ! -f "/storage/dd1/mp3/$line" ] ; then
+                	        ###grep found something but file does not exist.
+				ADD_TRACKS
+                	else
+                	        echo "$green	already on list$reset"
+				#echo "$line" >> "$_PLAYLIST"
+                	fi
+		done
+        else
+		echo "$redgrep found nothing$reset"
+		ADD_TRACKS
+	fi
+	echo ""
+
+done
+
+
+_date=$(date +%s)
+#echo "S/She Past Away/2013 - Belirdi Gece/She Past Away - Belirdi Gece - 02 - Ritüel.mp3" >> "$_PLAYLIST" && sed -i '/She Past Away - Rituel/d' /tmp/FAIL
+#echo "S/Skinny Puppy/1984 - Remission EP/Skinny Puppy - Remission EP - 02 - Glass Houses.mp3" >> "$_PLAYLIST" && sed -i '/Skinny Puppy - Glass Houses/d' /tmp/FAIL
+#echo "D/Dead Can Dance/1984 - Dead Can Dance/Dead Can Dance - Dead Can Dance - 12 - Garden Of The Arcane Delights In Power We Entrust The Love Advocated.mp3" >> "$_PLAYLIST" && sed -i '/Dead Can Dance - Garden of the Arcane Delights/d' /tmp/FAIL
+#echo "M/The Magnetic Fields/1999 - 69 Love Songs/The Magnetic Fields - 69 Love Songs - 06 - I Don’t Want to Get over You.mp3" >> "$_PLAYLIST" && sed -i '/The Magnetic Fields - I Don_t Want/d' /tmp/FAIL
+#echo "B/The Baboons/2011 - Back Scratch/The Baboons - Back Scratch Cds - 06 - Can_t Let You Go.mp3" >> "$_PLAYLIST" && sed -i '/The Baboons - Cant Let You Go/d' /tmp/FAIL
+#echo "_Various Artists/In Goth Daze [1994 Cleopatra]/In Goth Daze - 05 - Zero Le Creche - Last Years Wife.mp3" >> "$_PLAYLIST" && sed -i '/che - Last Year/d' /tmp/FAIL
+#echo "F/Front Line Assembly/1994 - Total Terror, Pt. 2 [Cleopatra]/Front Line Assembly - Total Terror, Pt. 2 [Cleopatra] - 04 - Theyre Going to Kill Us [#].mp3" >> "$_PLAYLIST" && sed -i '/Front Line Assembly - They_re Going to Kill Us/d' /tmp/FAIL
+#echo "D/David Bowie/1993 - The Singles Collection/David Bowie - The Singles Collection - 06 - John, I_m Only Dancing.mp3" >> "$_PLAYLIST" && sed -i '/David Bowie - John I_m Only Dancing/d' /tmp/FAIL
+
+#sort -u "$_PLAYLIST" -o "$_PLAYLIST"
+#sort -u "$_PLAYLIST" -o "$_PLAYLIST"
+cp "$_PLAYLIST" "/storage/dd1/mp3/_PLAYLISTS/linux/loved-$_date.lin.m3u"
+chmod 0777 /storage/dd1/mp3/_PLAYLISTS/*
+chown ono:users /storage/dd1/mp3/_PLAYLISTS/*
+mpc update "_PLAYLISTS/linux/loved-$_date.lin.m3u"
+mpc clear
+mpc load "loved-$_date.lin.m3u"
+
+
+#rm /storage/dd1/mp3/_loved/* > /dev/null 2>&1
+#touch /storage/dd1/mp3/_loved/.mpdignore
+#for line in $(cat /storage/dd1/mp3/_PLAYLISTS/linux/loved-$_date.lin.m3u) ; do
+#	ln -s "/storage/dd1/mp3/$line" /storage/dd1/mp3/_loved/ > /dev/null 2>&1
+#done
+
+
+
+
+
+
+
+
+
+
+
+

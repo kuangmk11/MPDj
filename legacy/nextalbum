@@ -1,0 +1,26 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+IFS=$'\t'
+_album=$(mpc current -f "%album%")
+_playlist=$(mpc playlist -f "%position%\t%album%")
+_nextalbum=($(grep "$_album" <<< "$_playlist" | tail -n1))
+(( _nextalbum[0]++ ))
+if grep -q "^${_nextalbum[0]}\s" <<< "$_playlist"; then
+	mpc -q play ${_nextalbum[0]}
+	status=$(mpc status -f "%artist%$reset\t%album%\t%track%\t%title%")
+	statusend=$(tail -n2 <<< "$status")
+	statusbeg=$(head -n1 <<< "$status")
+	stat1=$magenta$(cut -f1 <<< "$statusbeg")$reset
+	stat2=$ltblue$(cut -f2 <<< "$statusbeg")$reset
+	stat3=$red$(cut -f3 <<< "$statusbeg")$reset
+	stat4=$green$(cut -f4 <<< "$statusbeg")$reset
+	echo "$stat1 - $stat2 - $stat3 - $stat4"
+	echo $yellow"$statusend"$reset
+	espeak -g 10 -s 160 -a 200 "$(mpc current -f %album%) by $(mpc current -f %artist%)" --stdout | aplay -D 'default' >/dev/null 2>&1 &
+	if [[ $1 = --trim ]] ; then
+		/etc/myscripts/mpd/mpd-trim-played
+	fi
+else
+	echo $red"No next album"$reset
+	espeak -g 10 -s 160 "No Next Album" --stdout | aplay -D 'default' >/dev/null 2>&1 &
+fi

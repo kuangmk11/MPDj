@@ -1,0 +1,33 @@
+#!/bin/bash
+clear
+source /etc/myscripts/colors.sh
+source /etc/myscripts/mpd/lyrics/variables
+
+echo $red $bold
+
+#edit
+if [[ $1 = -e ]]
+then
+nano "$_TABFILE"
+exit
+fi
+
+
+echo "$_ARTIST"
+echo "$_TITLE" $reset $white
+echo "───────────────────┐"
+echo "         ┌─────────┘"
+echo "         ↓          " $reset $cyan
+if [ -e "$_TABFILE" ] ; then
+        cat "$_TABFILE"
+	echo ""
+	echo $red"இ"$green"ڰۣ-ڰۣ—"
+else
+	echo $reset $black $whiteback
+	echo "No Local Lyrics - Enter now..."
+	echo $reset
+	mkdir "$_TABPATH" >> /dev/null 2>&1
+	nano "$_TABFILE"
+fi
+
+echo $reset

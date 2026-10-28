@@ -1,0 +1,204 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+source /etc/myscripts/mpd/lyrics/variables
+if grep -q '^Updating DB' <<< "$_ARTIST"; then
+        echo found db
+        exit
+fi
+if grep -q "^volume:" <<< "$_ARTIST"; then
+        echo found vol
+        exit
+fi
+
+#xml age limit in seconds: day=86400 week=604800
+oldIFS="$IFS"
+_AGE_LIMIT=604800
+mkdir "$_LYRPATH" >/dev/null 2>&1
+#_ART_ARTIST=$(mpc current -f %file% | sed -r 's|^|/storage/dd1/mp3/|')
+_PATH=$(mpc current -f %file% | sed -r 's|^|storage/dd1/mp3/|')
+if grep -q '^storage/dd1/mp3/volume:' <<< "$_PATH" ; then
+	echo $red"bad path, is something playing? exiting"$reset
+	exit 1
+fi
+IFS='¥' array=(${_PATH//\//¥})
+#for i in "${!array[@]}"
+#do
+#    echo "$i=>${array[i]}"
+#done
+IFS="$oldIFS"
+if grep -q 'storage/dd1/mp3/_' <<< "$_PATH" ; then
+        _ART_ARTIST="$(mpc current -f %artist%)"
+	_ART_ARTIST=${_ART_ARTIST//&/and}
+	_ART_ARTIST=${_ART_ARTIST//\'/_}
+	_ART_ARTIST=${_ART_ARTIST//\"/_}
+	_ART_ARTIST=${_ART_ARTIST//\./}
+	_ART_ARTIST=${_ART_ARTIST//[\?\:\+\=\.\,]}
+
+else
+	_ART_ARTIST=${array[4]}
+fi
+
+#echo "$_ART_ARTIST"
+
+#TEST BIO
+if [ -e "$_BIO_PATH" ] ; then
+	_XML_ARTIST_AGE=$(( ((`date +%s`) - (`date -r "$_BIO_PATH" +%s`)) ))
+else
+	_XML_ARTIST_AGE=$(( $_AGE_LIMIT + 1 ))
+fi
+if [ $_XML_ARTIST_AGE -gt $_AGE_LIMIT ]; then
+	echo "Bio XML is old"
+	_BIO=$(wget -qO- "$_XML_ARTIST")
+	if echo "$_BIO" | grep -q '<lfm status="ok">'; then
+		echo "$_BIO" > "$_BIO_PATH"
+		chmod 777 "$_BIO_PATH" >/dev/null 2>&1
+		echo "lastfm artist ok"
+	else
+		echo "last fm fail (artist)"
+	fi
+else
+	echo "Artist XML New Enough"
+	_BIO=$(cat "$_BIO_PATH")
+	echo "$_BIO_PATH"
+fi
+
+#TEST ALBUM
+if [ -e "$_ALB_PATH" ] ; then
+	_XML_ALBUM_AGE=$(( ((`date +%s`) - (`date -r "$_ALB_PATH" +%s`)) ))
+else
+        _XML_ALBUM_AGE=$(( $_AGE_LIMIT + 1 ))
+fi
+if [ $_XML_ALBUM_AGE -gt $_AGE_LIMIT ]; then
+        echo "Album XML is old"
+        _ALB=$(wget -qO- "$_XML_ALBUM")
+        if echo "$_ALB" | grep -q '<lfm status="ok">'; then
+                echo "$_ALB" > "$_ALB_PATH"
+                echo "lastfm album ok"
+        else
+                echo "last fm fail (album)"
+        fi
+else
+        echo "Album XML New Enough"
+        _ALB=$(cat "$_ALB_PATH")
+fi
+
+#PARSING BIO
+_XML_SIMILAR_ARTISTS=$(echo "$_BIO" | xml_grep '//artist/similar/artist/name' --text_only)
+_XML_TAGS=$(echo "$_BIO" | xml_grep '//artist/tags/tag/name' --text_only)
+_XML_LISTENERS=$(echo "$_BIO" | xml_grep '//artist/stats/listeners' --text_only)
+_XML_PLAYCOUNT=$(echo "$_BIO" | xml_grep '//artist/stats/playcount' --text_only)
+_XML_CONTENT=$(echo "$_BIO" | xml_grep '//artist/bio/content' --text_only)
+_XML_SUMMARY=$(echo "$_BIO" | xml_grep '//artist/bio/summary' --text_only)
+#_XML_ARTIST_IMG=$(echo $_BIO | sed -n 's|.*<image size="mega">\(.*\)<streamable>.*|\1|p' | sed 's|<\/image>||g' | sed 's|\s||g')
+_XML_ARTIST_IMG_ARR=($(echo $_BIO | xml_grep '//artist//image' --text_only --nb_results 5))
+#for i in "${!_XML_ARTIST_IMG_ARR[@]}"
+#do
+#    echo "$i=>${_XML_ARTIST_IMG_ARR[i]}"
+#done
+#exit
+
+#PARSING ALBUM
+#echo "$_XML_LISTENERS"
+#echo "$_XML_PLAYCOUNT"
+#echo "$_XML_SUMMARY"
+#echo "$_XML_TAGS"
+
+###IMGGRAB func begin
+imggrab(){
+XML_ARTIST_IMG=${_XML_ARTIST_IMG_ARR[i]}
+_IMG_EXT=$(echo $_XML_ARTIST_IMG | sed -r 's/.+\.(gif|png|jpg)/\1/' | sed 's|\s||g')
+#if [ -e "$_IMG_PATH.$_IMG_EXT" ] ; then
+#	echo "We have an Artist img"
+#else
+#	wget -qO "$_IMG_PATH.$_IMG_EXT" $_XML_ARTIST_IMG
+#	touch "$_IMG_PATH.$_IMG_EXT"
+#	if [ "$_IMG_EXT" != "jpg" ]; then
+#		convert "$_IMG_PATH.$_IMG_EXT" "$_IMG_PATH.jpg"
+#		if [ -e "$_IMG_PATH.jpg" ] ; then
+#			rm "$_IMG_PATH.$_IMG_EXT"
+#		fi
+#	fi
+#fi
+
+
+		if [ -s "$_IMG_PATH.jpg" ] ; then
+			_GOT_IMG=1
+                        echo $green"We already had an Artist IMG"$reset
+			if [ ! -z "$_ART_ARTIST" ] ; then
+	                        if [ ! -s "/storage/dd1/mp3/__artist_img/$_ART_ARTIST.jpg" ] ; then
+        	                        cp "$_IMG_PATH.jpg" "/storage/dd1/mp3/__artist_img/$_ART_ARTIST.jpg"
+                	        fi
+			fi
+                else
+                        #####ARTIST IMAGE########
+                        if [ ! -s "$_IMG_PATH.$_IMG_EXT" ] ; then
+                                wget -qO "$_IMG_PATH.$_IMG_EXT" "$_XML_ARTIST_IMG"
+                                echo "$_IMG_PATH.$_IMG_EXT"
+				touch "$_IMG_PATH.$_IMG_EXT"
+                                if [ -s "$_IMG_PATH.$_IMG_EXT" ] ; then
+                                        echo $green"IMG Scraped"$reset
+					_GOT_IMG=1
+                                        if [ "$_IMG_EXT" != "jpg" ]; then
+                                                echo $yellow"converting $_IMG_EXT"$reset
+                                                convert "$_IMG_PATH.$_IMG_EXT" "$_IMG_PATH.jpg"
+                                                if [ -e "$_IMG_PATH.jpg" ] ; then
+                                                        rm "$_IMG_PATH.$_IMG_EXT"
+                                                fi
+                                        fi
+                                        identify "$_IMG_PATH.jpg" > /dev/null || rm "_IMG_PATH.jpg" || echo $red"Image was Corrupt: REMOVED"$reset
+                                        if [ -s "$_IMG_PATH.jpg" ] ; then
+                                                echo $green"We already had an Artist IMG"$reset
+						if [ ! -z "$_ART_ARTIST" ] ; then
+                                                	if [ -s "/storage/dd1/mp3/__artist_img/$_ART_ARTIST.jpg" ] ; then
+                                                        	echo $green"already in artist image directory"$reset
+                                                	else
+	                                                        echo $green"copy to artist image directory"$reset
+	                                                        cp "$_IMG_PATH.jpg" "/storage/dd1/mp3/__artist_img/$_ART_ARTIST.jpg"
+                                                	fi
+						fi
+                                        fi
+                                else
+                                        echo $red"Bad IMG"$reset
+                                        BAD_IMG=1
+					echo "$_ARTIST" >> ~/.last-fm-art-not-found.txt && sort -u ~/.last-fm-art-not-found.txt -o ~/.last-fm-art-not-found.txt
+                                        rm "$_IMG_PATH.$_IMG_EXT"
+                                fi
+                        fi
+                fi
+}
+###INGGRAB FUNC END
+
+i=5
+while [ -z $_GOT_IMG ] ;
+do
+	((i--))
+	_XML_ARTIST_IMG=${_XML_ARTIST_IMG_ARR[i]}
+   	imggrab
+	#echo $_XML_ARTIST_IMG
+	if [ $i = 0 ]; then
+		break
+	fi
+done
+
+#if [ ! -z $BAD_IMG ] ; then
+#	BAD_IMG=""
+#	((i--))
+#	_XML_ARTIST_IMG=${_XML_ARTIST_IMG_ARR[i]}
+#	echo $_XML_ARTIST_IMG
+#	imggrab
+#fi
+
+##Write bio
+if [ -e "$_LYRPATH/bio.txt" ] ; then
+	echo "we have bio.txt"
+else
+	echo "BIO ########################################################################" > "$_LYRPATH/bio.txt"
+	echo "$_XML_CONTENT" | html2text | sed 's|&quot;|"|g' | sed 's|&amp;|\&|g' | sed "s|â|'|g" >> "$_LYRPATH/bio.txt"
+	echo "" >> "$_LYRPATH/bio.txt"
+	echo "Similar Artists:" >> "$_LYRPATH/bio.txt"
+	echo "$_XML_SIMILAR_ARTISTS" >> "$_LYRPATH/bio.txt"
+	echo "" >> "$_LYRPATH/bio.txt"
+	echo "Tags:" >> "$_LYRPATH/bio.txt"
+	echo "$_XML_TAGS" >> "$_LYRPATH/bio.txt"
+fi
+

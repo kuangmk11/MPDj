@@ -1,0 +1,4 @@
+#!/bin/bash
+mpc status -f %track% | head -n1
+exit
+

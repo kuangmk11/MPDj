@@ -1,0 +1,18 @@
+#!/bin/bash
+_ARTIST="$(mpc -f '%artist%' | head -n 1 | sed 's|\/|_|' | perl -ne 'print lc')"
+_TITLE="$(mpc -f '%title%' | head -n 1 | sed 's|\/|_|' | sed -r 's|\s*\(.+\)||g' | sed -r 's|\s*\[.+\]||g' | perl -ne 'print lc')"
+#_TITLE="$(mpc -f '%title%' | head -n 1 | sed 's|\/|_|' | perl -ne 'print lc')"
+#echo "$_TITLE"
+#exit
+_PATH_ARTIST=${_ARTIST//[:+=.,]}
+_PATH_TITLE=${_TITLE//[:+=.,]}
+_2ARTIST=$(echo "$_ARTIST" | sed -r 's/Christian Death.+/Christian Death/')
+_LYRPATH="/storage/dd1/mp3/_lyrics/$_PATH_ARTIST"
+_LYRFILE="/storage/dd1/mp3/_lyrics/$_PATH_ARTIST/$_PATH_ARTIST - $_PATH_TITLE.txt"
+lrc_LYRFILE="/storage/dd1/mp3/_lyrics/$_PATH_ARTIST/$_PATH_ARTIST - $_PATH_TITLE.lrc"
+_file=/tmp/lyrics.tmp
+_TPL='http://makeitpersonal.co/lyrics?artist=<artist>&title=<title>'
+_SRY="Sorry, We don't have lyrics for this song yet."
+_URL="${_TPL//"<artist>"/$_2ARTIST}"
+_URL="${_URL//"<title>"/$_TITLE}"
+

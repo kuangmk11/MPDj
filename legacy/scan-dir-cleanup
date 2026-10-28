@@ -1,0 +1,11 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+IFS=$'\n\b'
+_DIRLIST=($(find /storage/dd1/mp3 -type f -iname "*.mp3" -exec dirname '{}' \; | sort -u ))
+for i in ${!_DIRLIST[@]}; do
+	if [[ "$1" = --move ]] ; then
+		find "${_DIRLIST[i]}" -mindepth 1 -maxdepth 1 -type d -not -name "scans" -exec mv -i '{}' "${_DIRLIST[i]}/scans" \;
+	else
+		find "${_DIRLIST[i]}" -mindepth 1 -maxdepth 1 -type d -not -name "scans"
+	fi
+done

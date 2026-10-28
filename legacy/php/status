@@ -1,0 +1,8 @@
+#!/bin/bash
+_STATUS=$(mpc status |grep -E '(playing|paused)' | cut -c1-10)
+if [ -z $_STATUS ] ; then
+	_STATUS='[Stopped]'
+fi
+echo "$_STATUS"
+exit
+

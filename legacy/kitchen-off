@@ -1,0 +1,3 @@
+#!/bin/bash
+amixer set Surround mute
+#mpc disable 2

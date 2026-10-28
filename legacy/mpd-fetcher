@@ -1,0 +1,24 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+playing=$(mpc status | grep -o '\[playing\]')
+if [ $? -eq 0  ]
+then
+	echo "good" #>> /dev/null
+else
+	echo "bad" #>> /dev/null
+	exit
+fi
+trip=10
+count=$(mpc playlist -f %position% | wc -l)
+play_pos=$(mpc current -f "%position%")
+tracks_left=$(($count - $play_pos))
+if [ $tracks_left -gt $trip ]
+then
+	#echo "" >> /dev/null
+	echo "Playlist has more than $trip tracks left!"
+else
+	#mpc shuffle
+	echo "run oneshot"
+	similar-artists-oneshot
+fi
+exit

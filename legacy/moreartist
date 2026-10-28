@@ -1,0 +1,11 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+_artist=$(mpc current -f %artist%)
+if [ -z "$_artist" ] ; then
+	echo nothing playing
+        exit
+fi
+mpc crop
+
+artist -a "$_artist"
+mpc del $(mpc playlist -f "%artist% %title% ¥%position%" | grep "$_artist $_title" | head -2 | tail -1 | sed -r "s/.+¥//")

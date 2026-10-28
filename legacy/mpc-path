@@ -1,0 +1,9 @@
+#!/bin/bash
+if [[ $1 = -e ]]
+then
+shift
+mpc current -f "%file%" | sed 's|^|/storage/dd1/mp3/|' | sed 's|\s|\\ |g' | sed "s/'/\\\'/g"
+exit
+fi
+mpc current -f "%file%" | sed 's|^|/storage/dd1/mp3/|'
+

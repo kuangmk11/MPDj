@@ -1,0 +1,140 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+rm /tmp/urllist > /dev/null
+#for i in {1..40} ; do
+#	printf ..$i
+#	lynx -dump -listonly "http://www.slicingupeyeballs.com/category/radio/page/$i/" | cut -c7- | grep "/dark-wave-playlist-" | grep -v "#comments" | grep -v "#respond" |sort -u >> /tmp/urllist
+#	lynx -dump -listonly "http://www.slicingupeyeballs.com/category/dark-wave/page/$i/" | cut -c7- | grep "/dark-wave-playlist-" | grep -v "#comments" | grep -v "#respond" |sort -u >> /tmp/urllist
+#done
+find /tmp/convert -type f -iname "*.lst" >> /tmp/urllist
+_OUTDIR=/tmp/playlists
+
+mkdir "$_OUTDIR"
+rm "$_OUTDIR/_not-found"
+
+while read _URL ; do
+	if grep -q "$_URL" /storage/dd1/mp3/_Darkwave.Radio/.downloaded ; then
+		printf "+"
+	else
+		#_PLAYLIST=$(wget -qO- "$_URL" | sed -n '/<p><strong><strong>Playlist:/,$p' | sed '/<p>&nbsp;<\/p>/,$d' | sed 's|<\/*strong>||g' | sed 's|<\/*p>||g' | sed 's|&#82[0-9][0-9];||g' | sed 's|<br \/>||g' | sed 's|<\/*em>||g' | sed 's|\&amp\;|\&|g')
+		_PLAYLIST=$(cat "$_URL")
+		if [ -z $_PLAYLIST ] ; then
+			_PLAYLIST=$(wget -qO- "$_URL" | sed -n '/<p><strong>Playlist:/,$p' | sed '/<p>&nbsp;<\/p>/,$d' | sed 's|<\/*strong>||g' | sed 's|<\/*p>||g' | sed 's|&#82[0-9][0-9];||g' | sed 's|<br \/>||g' | sed 's|<\/*em>||g' | sed 's|\&amp\;|\&|g' | sed -n '/PREVIOUSLY ON SLICING UP EYEBALLS/q;p' | sed -n '/<p class="clear">/q;p')
+			#echo "$_PLAYLIST"
+			#echo $_URL && exit
+		fi
+		_PTITLE=$(basename "$_URL" | sed 's|\.lst$||g')
+		if [[ -z $_PTITLE ]] ; then
+			echo "$yellow error: =$_URL= $reset"
+		else
+			echo "$yellowprocessing: $_PTITLE$reset"
+			echo "$yellow=$_URL=$reset"
+			# first, strip underscores
+			_PTITLE=${_PTITLE//_/}
+			_PTITLE=${_PTITLE//\//-/}
+			# next, replace spaces with underscores
+			_PTITLE=${_PTITLE// /_}
+			# now, clean out anything that's not alphanumeric or an underscore
+			_PTITLE=${_PTITLE//[^a-zA-Z0-9_-]/}
+			# finally, lowercase with TR
+			_PTITLE=`echo -n $_PTITLE | tr A-Z a-z`
+			rm "$_OUTDIR/$_PTITLE.m3u"
+
+
+			while read -r line ; do
+				line=${line//1,000/1000/}
+					line=${line//Circling Overhead/Circling Overland/}
+				line=${line//\?/}
+
+				_ARTIST=$(echo $line | cut -f1 -d',' | sed "s/[ \t]*$//" | sed "s/^[ \t]*//" | awk '{$1=$1};1')
+				_TITLE=$(echo $line | cut -f 2- -d',' | sed "s/^[ \t]*//" |  sed "s/[ \t]*$//" | awk '{$1=$1};1')
+				echo "### searching for $green $_ARTIST - $_TITLE $reset"
+				#FIX FOR SINGLE CHARACTER TITLES
+				if [[ "$_TITLE" = [a-zA-Z] ]] ; then
+					_FILE=$(mpc find artist "$_ARTIST" title "$_TITLE")
+				else
+					_FILE=$(mpc search artist "$_ARTIST" title "$_TITLE")
+				fi
+				#STRIP SHIT IN ()
+				if [[ -z $_FILE ]] ; then
+					#echo "not found: stripping (*)"
+					_TITLE=$(echo "$_TITLE" | sed 's/ *([^)]*)//g' | sed "s/[ \t]*$//g" | sed "s/^[ \t]*//g" | awk '{$1=$1};1')
+					_ARTIST=$(echo "$_ARTIST" | sed 's/ *([^)]*)//g' | sed "s/[ \t]*$//g" | sed "s/^[ \t]*//g" | awk '{$1=$1};1')
+					_FILE=$(mpc search artist "$_ARTIST" title "$_TITLE")
+				fi
+				#CHANGE & to AND
+				if [[ -z $_FILE ]] ; then
+					#echo "not found: & to and"
+					_ARTIST=$(echo "$_ARTIST" | sed 's/\&/and/g' | sed 's|\.||g')
+					_TITLE=$(echo "$_TITLE" | sed "s/Im /I'm /g")
+					_TITLE=$(echo "$_TITLE" | sed "s/In a City/In The City/g")
+					_FILE=$(mpc search artist "$_ARTIST" title "$_TITLE")
+				fi
+				#STRIP TRAILING CHARACTER TO BE SURE
+				if [[ -z $_FILE ]] ; then
+					_LARTIST=$(echo "$_ARTIST" | sed 's|.$||g')
+					_LTITLE=$(echo "$_TITLE" | sed 's|.$||g')
+					_FILE=$(mpc search artist "$_LARTIST" title "$_LTITLE")
+				fi
+				#FUZZY LOGIC
+				#if [[ -z $_FILE ]] ; then
+				#	_TEST=$(mpc search artist "$_ARTIST" | wc -l)
+				#	if [[ $_TEST -gt 1 ]] ; then
+				#		rm /tmp/select
+				#		touch /tmp/select
+				#		mpc search artist "$_ARTIST" | fzf -i -1 --query="$_TITLE" > /tmp/select
+				#		_FILE=$(cat /tmp/select)
+				#		echo $blue$_FILE$reset
+				#	fi
+				#fi
+				#FUZZY LOGIC MANUAL
+				if [[ -z $_FILE ]] ; then
+					if [[ $1 = -m ]] ; then
+						_TEST=$(mpc search artist "$_ARTIST" | wc -l)
+						if [[ $_TEST -gt 1 ]] ; then
+							rm /tmp/select
+							touch /tmp/select
+							#$_FILE=$(mpc search artist "$_ARTIST" | fzf --query="$_TITLE - $_ARTIST")
+							mpc search artist "$_ARTIST" | fzf -i --query="$_TITLE" > /tmp/select
+							_FILE=$(cat /tmp/select)
+							echo $_FILE
+						fi
+					fi
+				fi
+				#YOUTUBE GRAB
+				if [[ -z $_FILE ]] ; then
+					echo "grabbing $_ARTIST - $_TITLE from YouTube"
+					_OUT=$(/etc/myscripts/mpd/youtube-get-songs --oneshot "$_ARTIST - $_TITLE")
+					#echo "$_OUT"
+					_FILE=$(echo "$_OUT" | grep "FILENAME:" | sed 's|FILENAME\:|_Darkwave.Radio/|g')
+					mpc -q update "$_FILE"
+				fi
+				if [[ -z $_FILE ]] ; then
+					echo "could not find: $red =$_ARTIST= - =$_TITLE= $reset"
+					echo "$_ARTIST - $_TITLE" >> "$_OUTDIR/_not-found"
+				else
+					echo "" >> "$_OUTDIR/$_PTITLE.m3u"
+					echo "#search string: =$_ARTIST= - =$_TITLE"= >> "$_OUTDIR/$_PTITLE.m3u"
+					_max=1000
+					while read -r track ; do
+						length="${#track}"
+						if [ "$length" -lt "$_max" -a "$length" -gt 9 ] ; then
+							_max=$(echo "$length")
+							_1track=$(echo "$track")
+						fi
+					done <<< "$_FILE"
+					echo "found: $_1track"
+					echo "$_1track" >> "$_OUTDIR/$_PTITLE.m3u"
+				fi
+
+			done <<< "$_PLAYLIST"
+		fi
+		echo $_URL >> /storage/dd1/mp3/_Darkwave.Radio/.downloaded
+		mv "$_OUTDIR/$_PTITLE.m3u" /storage/dd1/mp3/_PLAYLISTS/linux/
+		mpc -q update "_PLAYLISTS/linux/$_PTITLE.m3u"
+	fi
+done < /tmp/urllist
+
+
+
+

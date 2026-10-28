@@ -1,0 +1,6 @@
+#!/bin/bash
+_FOLDER=$(dirname "$(mpc status -f %file% | head -n1 | sed -r 's|^|/storage/dd1/mp3/|' )")
+_MPDFOLDER=$(echo "$_FOLDER" | sed 's|/storage/dd1/mp3/||' )
+echo $_MPDFOLDER
+exit
+

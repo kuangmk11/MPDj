@@ -1,0 +1,109 @@
+#!/bin/bash
+source /etc/myscripts/colors.sh
+#source /etc/myscripts/mpd/lyrics/variables
+if [[ $1 = -a ]] ; then
+	shift
+	_add=1
+fi
+if [[ $1 = -i ]] ; then
+        shift
+	_add=1
+        _insert=1
+fi
+
+IFS=$(echo -en "\n\b")
+_suggest=($(grep --include=\*.txt --exclude=bio.txt -rnw '/storage/dd1/mp3/_lyrics' -ile "$*" --color=never))
+if [ ! -z "$_suggest" ] ; then
+	_length=${#_suggest[@]}
+	menu() {
+           for i in ${!_suggest[@]}; do
+                           printf "%3d%s) %s\n" $((i+1)) "${choices[i]:- }" "${_suggest[i]}"
+                done
+                [[ "$msg" ]] && echo "$msg"; :
+        }
+        clear
+	prompt=$yellow"Check a selection (again to uncheck, ENTER when done): "$reset   ###CHANGE FOR ONE SELECTION ONLY
+        _header=$ltblue"Pick a song"$reset
+	while echo $_header && menu && read -rp "$prompt" num && [[ "$num" ]]; do
+                [[ "$num" != *[![:digit:]]* ]] &&
+                        (( num > 0 && num <= ${#_suggest[@]} )) ||
+                        { msg=$red"Invalid option: $num"$reset; continue; }
+                        ((num--)); msg=$cyan"${_suggest[num]} was ${choices[num]:+un}checked"$reset
+                [[ "${choices[num]}" ]] && choices[num]="" || choices[num]="+"
+		clear
+
+        done
+        _c=""
+        for i in ${!_suggest[@]}; do
+                [[ "${choices[i]}" ]] && _c="1" ;
+        done
+        if [ ! -z $_c ] ; then
+		for i in ${!_suggest[@]}; do
+                        if [[ "${choices[i]}" ]] ; then
+				_ARTIST=$(echo "${_suggest[i]}" | sed -r 's|\/(.+\/)+(.+)\s-\s.+\.txt$|\2|')
+				_ARTIST=${_ARTIST//_/\'}
+				_SONG=$(echo "${_suggest[i]}" | sed -r 's|\.txt$||' | sed -r 's|^.+\s\-\s||')
+				_SONG=${_SONG//_/\'}
+				_AS="$_ARTIST $_SONG"
+				_suggest1+=($(mpc search artist "$_ARTIST" title "$_SONG"))
+				if grep -q " and " <<< "$_AS" ; then
+					echo "hit"
+					_ARTIST=$(echo "$_ARTIST" | sed 's| and | \& |g')
+					_SONG=$(echo "$_SONG" | sed 's| and | \& |g')
+					_suggest1+=($(mpc search artist "$_ARTIST" title "$_SONG"))
+				fi
+                        fi
+                done
+		if [ ! -z "$_suggest1" ] ; then
+		        _length=${#_suggest1[@]}
+		        menu() {
+        	   	for i in ${!_suggest1[@]}; do
+		                printf "%3d%s) %s\n" $((i+1)) "${choices1[i]:- }" "${_suggest1[i]}"
+        	   	done
+        	        [[ "$msg" ]] && echo "$msg"; :
+		        }
+			clear
+		        prompt=$yellow"Check a selection (again to uncheck, ENTER when done): "$reset   ###CHANGE FOR ONE SELECTION ONLY
+		        _header=$ltblue"Pick a version"$reset
+			while echo "$_header" && menu && read -rp "$prompt" num && [[ "$num" ]]; do
+		                [[ "$num" != *[![:digit:]]* ]] &&
+		                (( num > 0 && num <= ${#_suggest1[@]} )) ||
+		                { msg=$red"Invalid option: $num"$reset; continue; }
+		                ((num--)); msg=$cyan"${_suggest1[num]} was ${choices1[num]:+un}checked"$reset
+		                [[ "${choices1[num]}" ]] && choices1[num]="" || choices1[num]="+"
+				clear
+		        done
+		        _c=""
+		        for i in ${!_suggest1[@]}; do
+		                [[ "${choices1[i]}" ]] && _c="1" ;
+		        done
+			if [[ -z $_add ]] ; then
+        	        	mpc -q clear
+        	       	fi
+			if [ ! -z $_c ] ; then
+				for i in ${!_suggest1[@]}; do
+					if [[ "${choices1[i]}" ]] ; then
+						if [[ ! -z $_insert ]] ; then
+				                	mpc -q insert "${_suggest1[i]}" ; mpc -q play
+						else
+							mpc -q add "${_suggest1[i]}" ; mpc -q play
+						fi
+					fi
+				done
+				clear
+				mpc-playlist
+				mpc-status
+			else
+			       echo -e $red"\nYou selected nothing.\n"$reset
+			fi
+	        else
+	                echo -e $red"\nYou selected nothing.\n"$reset
+	        fi
+	fi
+else
+	echo "String not found"
+fi
+exit
+
+
+

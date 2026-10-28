@@ -1,0 +1,20 @@
+#!/bin/bash
+#for f in /storage/dd1/mp3/_PLAYLISTS/linux/*.m3u; do
+#	echo "$f"
+#	sed -i 's|/storage/dd1/mp3/||g' "$f"
+#done
+rm /tmp/lovnit >/dev/null 2>&1
+touch /tmp/lovnit
+cat /storage/dd1/mp3/_PLAYLISTS/linux/fav.lin.m3u >> /tmp/lovnit
+cat /storage/dd1/mp3/_PLAYLISTS/linux/_kuangmk11_\ Loved\ Tracks.lin.m3u >> /tmp/lovnit
+cat /storage/dd1/mp3/_PLAYLISTS/linux/"'"kuangmk11"'"\ Loved\ Tracks.lin.m3u >> /tmp/lovnit
+cat /storage/dd1/mp3/_PLAYLISTS/linux/Loved\ Tracks.lin.m3u >> /tmp/lovnit
+cat /storage/dd1/mp3/_PLAYLISTS/linux/mpdmela-lastfm-loved-tracks.m3u >> /tmp/lovnit
+cat /storage/dd1/mp3/_PLAYLISTS/linux/mpdmela-lastfm-top-tracks-of-all-time.m3u >> /tmp/lovnit
+cat /storage/dd1/mp3/_PLAYLISTS/linux/this.lin.m3u >> /tmp/lovnit
+sort -u /tmp/lovnit -o /tmp/lovnit >/dev/null 2>&1
+cat /tmp/lovnit | shuf > /storage/dd1/mp3/_PLAYLISTS/linux/fav.lin.m3u
+#mpc update /storage/dd1/mp3/_PLAYLISTS/ >/dev/null 2>&1
+mpc crop >/dev/null 2>&1
+mpc load fav.lin.m3u
+rm /tmp/lovnit >/dev/null 2>&1
