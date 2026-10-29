@@ -9,7 +9,7 @@ The original scripts are in [`legacy/`](legacy/), with a table of what replaced 
 ## Quick start
 
 ```bash
-git clone <this repo> ~/src/mpdj && cd ~/src/mpdj
+git clone git@github.com:kuangmk11/MPDj.git ~/src/mpdj && cd ~/src/mpdj
 ./install.sh --music-dir ~/Music --lastfm-key KEY --lastfm-user NAME
 mpdj artist "joy division"        # play something; the daemon keeps the queue going
 ```
